@@ -1,6 +1,7 @@
 export interface AuthTokens {
   access_token: string;
   refresh_token: string;
+  user_data?: unknown;
 }
 
 export interface LoginCredentials {
@@ -28,6 +29,7 @@ export interface InstalledGame {
 
 export interface ApiError {
   message?: string;
+  error_code?: number;
   errors?: Record<string, string[]>;
   [key: string]: unknown;
 }

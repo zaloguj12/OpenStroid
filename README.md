@@ -11,13 +11,24 @@ npm run dev
 
 The dev server starts on [http://localhost:3000](http://localhost:3000).
 
-## Configuration
+## API proxy (local development)
 
-Copy `.env.example` to `.env` and adjust as needed:
+In development the Vite dev server proxies all `/api` requests to
+`https://cloud.boosteroid.com` so that login and other API calls behave as
+same-origin requests — matching the original client's request model and
+avoiding cross-origin 403 rejections.
+
+No extra configuration is required for local dev. If you need to point at a
+different backend, set `VITE_API_BASE_URL` in a `.env` file:
+
+```bash
+cp .env.example .env
+# edit .env — set VITE_API_BASE_URL only for non-local deployments
+```
 
 | Variable | Default | Description |
 |---|---|---|
-| `VITE_API_BASE_URL` | `https://cloud.boosteroid.com` | Backend API origin |
+| `VITE_API_BASE_URL` | *(empty — uses relative paths + Vite proxy)* | Full API origin for deployed builds |
 
 ## Project structure
 
@@ -35,25 +46,29 @@ src/
 
 ## Current features (v0.1)
 
-- **Login** — email/password authentication with validation, loading states, and server error handling
+- **Login** — email/password authentication with validation, loading states, and server error handling (422 + 403)
 - **Session restore** — persisted tokens are validated on startup so users stay signed in
 - **My Games library** — fetches installed games from the API with skeleton loading, empty state, and error recovery
 - **Logout** — clears session and returns to login
 - **Token refresh** — automatic silent refresh on 401 responses with request queuing
+- **Vite dev proxy** — `/api` requests are proxied to `cloud.boosteroid.com` for same-origin behavior in development
 
 ## Architecture notes
 
-- Auth tokens are stored in `localStorage` (`access_token`, `refresh_token`, `boosteroid_auth`).
+- Auth tokens are stored in `localStorage` (`access_token`, `refresh_token`).
+- `boosteroid_auth` stores the `user_data` object returned by the login endpoint, matching the original client behavior.
 - The `Authorization` header sends the raw access token (no `Bearer` prefix), matching the observed protocol.
 - Login payload construction is isolated in `src/auth/login-adapter.ts` — if field names need to change, only that file is touched.
 - The API client in `src/api/client.ts` handles automatic token refresh with a queue for concurrent 401s.
+- Response parsing is envelope-resilient (handles both `{ access_token, ... }` and `{ data: { access_token, ... } }`).
 - Route protection is handled by `RequireAuth`, which shows a loading spinner during session bootstrap and redirects unauthenticated users.
+- In dev, API base URL defaults to empty (relative), and Vite proxies `/api` to the upstream origin. In production builds, set `VITE_API_BASE_URL` to the full API origin.
 
 ## Scripts
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start dev server |
+| `npm run dev` | Start dev server (with API proxy) |
 | `npm run build` | Type-check and build for production |
 | `npm run preview` | Preview production build |
 | `npm run lint` | Run ESLint |

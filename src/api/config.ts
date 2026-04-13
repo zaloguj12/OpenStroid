@@ -1,5 +1,5 @@
 export const API_CONFIG = {
-  baseUrl: import.meta.env.VITE_API_BASE_URL || 'https://cloud.boosteroid.com',
+  baseUrl: import.meta.env.VITE_API_BASE_URL || '',
   endpoints: {
     login: '/api/v1/auth/login',
     refreshToken: '/api/v1/auth/refresh-token',

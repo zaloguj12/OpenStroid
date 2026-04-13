@@ -18,6 +18,7 @@ import { IconMail, IconLock, IconAlertCircle } from '@tabler/icons-react';
 import { AxiosError } from 'axios';
 import { useAuth } from '../auth';
 import type { ApiError } from '../types';
+import classes from './LoginPage.module.css';
 
 export function LoginPage() {
   const { login, isAuthenticated, isBootstrapping, isLoading } = useAuth();
@@ -58,13 +59,19 @@ export function LoginPage() {
       navigate(from, { replace: true });
     } catch (err) {
       const axiosErr = err as AxiosError<ApiError>;
-      if (axiosErr.response?.status === 422) {
+      const status = axiosErr.response?.status;
+      const data = axiosErr.response?.data;
+      if (status === 422 || status === 403) {
+        const raw = data as Record<string, unknown> | undefined;
+        const nested = raw?.error as Record<string, unknown> | undefined;
         const msg =
-          axiosErr.response.data?.message ||
+          (raw?.message as string) ||
+          (raw?.error_message as string) ||
+          (nested?.message as string) ||
           'We could not find those credentials.';
         setServerError(msg);
-      } else if (axiosErr.response?.data?.message) {
-        setServerError(axiosErr.response.data.message);
+      } else if (data?.message) {
+        setServerError(data.message);
       } else if (axiosErr.message === 'Network Error') {
         setServerError('Unable to reach the server. Check your connection.');
       } else {
@@ -205,15 +212,7 @@ export function LoginPage() {
                   size="md"
                   autoComplete="email"
                   disabled={isLoading}
-                  styles={{
-                    input: {
-                      backgroundColor: 'var(--mantine-color-dark-7)',
-                      borderColor: 'var(--mantine-color-dark-4)',
-                      '&:focus': {
-                        borderColor: 'var(--mantine-color-brand-5)',
-                      },
-                    },
-                  }}
+                  classNames={{ input: classes.loginInput }}
                   {...form.getInputProps('email')}
                 />
 
@@ -224,15 +223,7 @@ export function LoginPage() {
                   size="md"
                   autoComplete="current-password"
                   disabled={isLoading}
-                  styles={{
-                    input: {
-                      backgroundColor: 'var(--mantine-color-dark-7)',
-                      borderColor: 'var(--mantine-color-dark-4)',
-                      '&:focus': {
-                        borderColor: 'var(--mantine-color-brand-5)',
-                      },
-                    },
-                  }}
+                  classNames={{ input: classes.loginInput }}
                   {...form.getInputProps('password')}
                 />
 
@@ -244,16 +235,10 @@ export function LoginPage() {
                   mt="xs"
                   variant="gradient"
                   gradient={{ from: 'brand.5', to: 'accent.6', deg: 135 }}
-                  styles={{
-                    root: {
-                      fontWeight: 600,
-                      height: 46,
-                      '&:hover': {
-                        transform: 'translateY(-1px)',
-                        boxShadow: '0 4px 20px rgba(0, 212, 245, 0.3)',
-                      },
-                      transition: 'all 150ms ease',
-                    },
+                  style={{
+                    fontWeight: 600,
+                    height: 46,
+                    transition: 'all 150ms ease',
                   }}
                 >
                   Sign in

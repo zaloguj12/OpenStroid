@@ -36,6 +36,10 @@ function processQueue(error: unknown, token: string | null) {
   failedQueue = [];
 }
 
+function resolveUrl(path: string): string {
+  return API_CONFIG.baseUrl ? `${API_CONFIG.baseUrl}${path}` : path;
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -73,13 +77,15 @@ apiClient.interceptors.response.use(
 
       try {
         const { data } = await axios.post(
-          `${API_CONFIG.baseUrl}${API_CONFIG.endpoints.refreshToken}`,
+          resolveUrl(API_CONFIG.endpoints.refreshToken),
           { refresh_token: refreshToken },
           { headers: { 'Content-Type': 'application/json' } },
         );
-        const newAccessToken = data.access_token;
-        const newRefreshToken = data.refresh_token || refreshToken;
-        setTokens(newAccessToken, newRefreshToken);
+        const newAccessToken = data.access_token ?? data?.data?.access_token;
+        const newRefreshToken =
+          data.refresh_token ?? data?.data?.refresh_token ?? refreshToken;
+        const userData = data.user_data ?? data?.data?.user_data;
+        setTokens(newAccessToken, newRefreshToken, userData);
         processQueue(null, newAccessToken);
         originalRequest.headers.Authorization = newAccessToken;
         return apiClient(originalRequest);
