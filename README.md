@@ -29,6 +29,7 @@ cp .env.example .env
 | Variable | Default | Description |
 |---|---|---|
 | `VITE_API_BASE_URL` | *(empty — uses relative paths + Vite proxy)* | Full API origin for deployed builds |
+| `VITE_TURNSTILE_SITE_KEY` | `0x4AAAAAAB83Vz-GpH08brQi` (production) | Cloudflare Turnstile site key. Use `1x00000000000000000000AA` for local dev. |
 
 ## Project structure
 
@@ -46,7 +47,7 @@ src/
 
 ## Current features (v0.1)
 
-- **Login** — email/password authentication with validation, loading states, and server error handling (422 + 403)
+- **Login** — email/password authentication with Cloudflare Turnstile captcha, "Remember me" option, validation, loading states, and server error handling (422 + 403)
 - **Session restore** — persisted tokens are validated on startup so users stay signed in
 - **My Games library** — fetches installed games from the API with skeleton loading, empty state, and error recovery
 - **Logout** — clears session and returns to login
@@ -59,6 +60,9 @@ src/
 - `boosteroid_auth` stores the `user_data` object returned by the login endpoint, matching the original client behavior.
 - The `Authorization` header sends the raw access token (no `Bearer` prefix), matching the observed protocol.
 - Login payload construction is isolated in `src/auth/login-adapter.ts` — if field names need to change, only that file is touched.
+- The login request includes `cf-turnstile-response` (Cloudflare Turnstile captcha token) and `remember_me`, matching the official client's payload shape.
+- The Turnstile site key is configurable via `VITE_TURNSTILE_SITE_KEY`. For local dev, use the Cloudflare always-pass test key (`1x00000000000000000000AA`) in `.env`.
+- The Vite proxy rewrites cookie domains from `cloud.boosteroid.com` to `localhost` so server-set cookies work in development.
 - The API client in `src/api/client.ts` handles automatic token refresh with a queue for concurrent 401s.
 - Response parsing is envelope-resilient (handles both `{ access_token, ... }` and `{ data: { access_token, ... } }`).
 - Route protection is handled by `RequireAuth`, which shows a loading spinner during session bootstrap and redirects unauthenticated users.

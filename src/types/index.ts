@@ -7,6 +7,8 @@ export interface AuthTokens {
 export interface LoginCredentials {
   email: string;
   password: string;
+  'cf-turnstile-response'?: string;
+  remember_me?: boolean;
 }
 
 export interface User {

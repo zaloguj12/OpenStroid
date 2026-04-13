@@ -7,4 +7,6 @@ export const API_CONFIG = {
     user: '/api/v1/user',
     installedGames: '/api/v1/boostore/applications/installed',
   },
+  turnstileSiteKey:
+    import.meta.env.VITE_TURNSTILE_SITE_KEY || '0x4AAAAAAB83Vz-GpH08brQi',
 } as const;

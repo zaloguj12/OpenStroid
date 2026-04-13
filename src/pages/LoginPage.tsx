@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   TextInput,
@@ -12,11 +12,14 @@ import {
   Center,
   Alert,
   Transition,
+  Checkbox,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconMail, IconLock, IconAlertCircle } from '@tabler/icons-react';
 import { AxiosError } from 'axios';
+import { Turnstile, type BoundTurnstileObject } from 'react-turnstile';
 import { useAuth } from '../auth';
+import { API_CONFIG } from '../api/config';
 import type { ApiError } from '../types';
 import classes from './LoginPage.module.css';
 
@@ -25,6 +28,9 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileError, setTurnstileError] = useState<string | null>(null);
+  const turnstileRef = useRef<BoundTurnstileObject | null>(null);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/library';
 
@@ -32,6 +38,7 @@ export function LoginPage() {
     initialValues: {
       email: '',
       password: '',
+      remember_me: false,
     },
     validate: {
       email: (value) => {
@@ -41,23 +48,51 @@ export function LoginPage() {
       },
       password: (value) => {
         if (!value) return 'Password is required';
-        if (value.length < 4) return 'Password is too short';
+        if (value.length < 8) return 'Password must be at least 8 characters';
         return null;
       },
     },
     validateInputOnBlur: true,
   });
 
+  const handleTurnstileVerify = useCallback((token: string, bound: BoundTurnstileObject) => {
+    turnstileRef.current = bound;
+    setTurnstileToken(token);
+    setTurnstileError(null);
+  }, []);
+
+  const handleTurnstileError = useCallback(() => {
+    setTurnstileToken(null);
+    setTurnstileError('Captcha verification failed. Please try again.');
+  }, []);
+
+  const handleTurnstileExpire = useCallback(() => {
+    setTurnstileToken(null);
+  }, []);
+
   if (isAuthenticated && !isBootstrapping) {
     return <Navigate to={from} replace />;
   }
 
-  const handleSubmit = async (values: { email: string; password: string }) => {
+  const handleSubmit = async (values: { email: string; password: string; remember_me: boolean }) => {
+    if (!turnstileToken) {
+      setServerError('Please complete the captcha verification.');
+      return;
+    }
+
     setServerError(null);
     try {
-      await login(values);
+      await login({
+        email: values.email,
+        password: values.password,
+        remember_me: values.remember_me,
+        'cf-turnstile-response': turnstileToken,
+      });
       navigate(from, { replace: true });
     } catch (err) {
+      turnstileRef.current?.reset();
+      setTurnstileToken(null);
+
       const axiosErr = err as AxiosError<ApiError>;
       const status = axiosErr.response?.status;
       const data = axiosErr.response?.data;
@@ -186,7 +221,7 @@ export function LoginPage() {
                 </Title>
 
                 <Transition
-                  mounted={!!serverError}
+                  mounted={!!(serverError || turnstileError)}
                   transition="slide-down"
                   duration={200}
                 >
@@ -197,10 +232,13 @@ export function LoginPage() {
                       color="red"
                       icon={<IconAlertCircle size={18} />}
                       withCloseButton
-                      onClose={() => setServerError(null)}
+                      onClose={() => {
+                        setServerError(null);
+                        setTurnstileError(null);
+                      }}
                       radius="md"
                     >
-                      {serverError}
+                      {serverError || turnstileError}
                     </Alert>
                   )}
                 </Transition>
@@ -227,11 +265,44 @@ export function LoginPage() {
                   {...form.getInputProps('password')}
                 />
 
+                <Checkbox
+                  label="Remember me"
+                  size="sm"
+                  disabled={isLoading}
+                  styles={{
+                    input: {
+                      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                      borderColor: 'var(--mantine-color-dark-4)',
+                    },
+                  }}
+                  {...form.getInputProps('remember_me', { type: 'checkbox' })}
+                />
+
+                <Box
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    minHeight: 65,
+                  }}
+                >
+                  <Turnstile
+                    sitekey={API_CONFIG.turnstileSiteKey}
+                    onVerify={handleTurnstileVerify}
+                    onError={handleTurnstileError}
+                    onExpire={handleTurnstileExpire}
+                    theme="dark"
+                    size="flexible"
+                    retry="auto"
+                    retryInterval={3000}
+                  />
+                </Box>
+
                 <Button
                   type="submit"
                   fullWidth
                   size="md"
                   loading={isLoading}
+                  disabled={!turnstileToken}
                   mt="xs"
                   variant="gradient"
                   gradient={{ from: 'brand.5', to: 'accent.6', deg: 135 }}
