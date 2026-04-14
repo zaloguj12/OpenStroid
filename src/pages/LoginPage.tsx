@@ -75,6 +75,7 @@ export function LoginPage() {
   const [capture, setCapture] = useState<LoginCaptureSessionStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [extensionPairingCode, setExtensionPairingCode] = useState<string | null>(null);
   const pollHandle = useRef<number | null>(null);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/library';
@@ -117,6 +118,7 @@ export function LoginPage() {
     setServerError(null);
     try {
       const started = await startLoginCapture(method);
+      setExtensionPairingCode(started.extensionPairingCode ?? null);
       const initialStatus = await getLoginCaptureStatus(started.id);
       setCapture(initialStatus);
       void pollStatus(started.id);
@@ -143,6 +145,7 @@ export function LoginPage() {
     try {
       const cancelled = await cancelLoginCapture(capture.id);
       setCapture(cancelled);
+      setExtensionPairingCode(null);
     } catch (err) {
       const axiosErr = err as AxiosError<ApiError>;
       setServerError(axiosErr.response?.data?.message || 'Failed to cancel the active capture.');
@@ -248,9 +251,10 @@ export function LoginPage() {
                 size="sm"
                 icon={<ThemeIcon color="brand" size={22} radius="xl"><IconCheck size={14} /></ThemeIcon>}
               >
-                <List.Item>Load the unpacked extension from <Code>{EXTENSION_PATH}</Code> into Chrome.</List.Item>
-                <List.Item>In the extension popup, keep the backend URL set to <Code>http://localhost:3001</Code> for local dev.</List.Item>
-                <List.Item>Start capture below, then complete login on <Code>boosteroid.com</Code> in the same Chrome profile.</List.Item>
+                  <List.Item>Load the unpacked extension from <Code>{EXTENSION_PATH}</Code> into Chrome.</List.Item>
+                  <List.Item>In the extension popup, keep the backend URL set to <Code>http://localhost:3001</Code> for local dev.</List.Item>
+                  <List.Item>When prompted by the extension popup, paste the pairing code from this page so the extension can fetch the active ingest token.</List.Item>
+                  <List.Item>Start capture below, then complete login on <Code>boosteroid.com</Code> in the same Chrome profile.</List.Item>
               </List>
 
               {serverError && (
@@ -296,6 +300,9 @@ export function LoginPage() {
                     <>
                       <Text size="xs" c="dimmed">Capture ID: <Code>{capture.id}</Code></Text>
                       <Text size="xs" c="dimmed">Method: <Code>{capture.captureMethod}</Code></Text>
+                      {extensionPairingCode && capture.captureMethod === 'extension' && (
+                        <Text size="xs" c="dimmed">Pairing code: <Code>{extensionPairingCode}</Code></Text>
+                      )}
                       <Text size="xs" c="dimmed">Timeout: {new Date(capture.timeoutAt).toLocaleString()}</Text>
                       <Text size="xs" c="dimmed">Login URL: <Code>{capture.loginUrl}</Code></Text>
                       {capture.finalUrl && <Text size="xs" c="dimmed">Final URL: <Code>{capture.finalUrl}</Code></Text>}

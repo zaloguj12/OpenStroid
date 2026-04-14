@@ -3,7 +3,11 @@ import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { serverConfig } from './config.js';
-import { authCaptureManager, type CaptureMethod } from './lib/authCapture.js';
+import {
+  authCaptureManager,
+  type CaptureMethod,
+  type ExtensionPairingRequest,
+} from './lib/authCapture.js';
 import { clearSession, createSession, readSession, writeSession } from './lib/session.js';
 import {
   getInstalledGamesUpstream,
@@ -150,10 +154,17 @@ app.post('/auth/login/cancel', async (req, res, next) => {
   }
 });
 
-app.get('/auth/extension/active', (_req, res) => {
-  const active = authCaptureManager.getActiveExtensionSession();
+app.post('/auth/extension/active', (req, res) => {
+  const body = req.body as ExtensionPairingRequest | undefined;
+  const pairingCode = typeof body?.pairingCode === 'string' ? body.pairingCode : '';
+  if (!pairingCode) {
+    res.status(400).json({ message: 'Extension pairing code is required.' });
+    return;
+  }
+
+  const active = authCaptureManager.getActiveExtensionSession(pairingCode);
   if (!active) {
-    res.status(404).json({ message: 'No active extension capture session.' });
+    res.status(404).json({ message: 'No active extension capture session for that pairing code.' });
     return;
   }
 

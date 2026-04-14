@@ -1,4 +1,5 @@
 const backendInput = document.getElementById('backendBaseUrl');
+const pairingInput = document.getElementById('pairingCode');
 const statusElement = document.getElementById('status');
 const saveButton = document.getElementById('save');
 const openButton = document.getElementById('open');
@@ -14,13 +15,18 @@ function refreshState() {
       return;
     }
     backendInput.value = response.backendBaseUrl;
+    pairingInput.value = response.pairingCode || '';
     setStatus(response);
   });
 }
 
 saveButton.addEventListener('click', () => {
   chrome.runtime.sendMessage(
-    { type: 'openstroid:set-backend-base-url', backendBaseUrl: backendInput.value },
+    {
+      type: 'openstroid:set-settings',
+      backendBaseUrl: backendInput.value,
+      pairingCode: pairingInput.value,
+    },
     () => refreshState(),
   );
 });

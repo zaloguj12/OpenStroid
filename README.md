@@ -47,7 +47,7 @@ The backend exposes normalized first-party endpoints:
 | `GET` | `/auth/login/status` | Read the latest capture status and establish the first-party OpenStroid session on success |
 | `GET` | `/auth/login/status/:id` | Read status for a specific capture session |
 | `POST` | `/auth/login/cancel` | Cancel the active capture and clean up browser resources |
-| `GET` | `/auth/extension/active` | Extension-only route to read the currently active pending extension capture session |
+| `POST` | `/auth/extension/active` | Extension-only route to read the currently active pending extension capture session after presenting the user-issued pairing code |
 | `POST` | `/auth/extension/capture` | Extension-only route to submit captured upstream cookies/payloads for ingestion |
 | `GET` | `/auth/debug/capture` | Return the latest raw upstream capture artifact, including cookies and payloads |
 | `POST` | `/auth/logout` | Clear first-party session and attempt upstream logout |
@@ -97,7 +97,8 @@ The backend exposes normalized first-party endpoints:
 3. Choose **Load unpacked**.
 4. Select `extension/openstroid-capture/` from this repo.
 5. Open the extension popup and confirm the backend URL is `http://localhost:3001`.
-6. In OpenStroid, click **Start extension capture** and then log in on Boosteroid in the same Chrome profile.
+6. In OpenStroid, click **Start extension capture** and copy the pairing code shown on the login page into the extension popup.
+7. Log in on Boosteroid in the same Chrome profile.
 
 ## Turnstile / capture notes
 

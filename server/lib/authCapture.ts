@@ -83,6 +83,7 @@ export interface CaptureStartResult {
   timeoutAt: string;
   captureMethod: CaptureMethod;
   loginUrl: string;
+  extensionPairingCode?: string;
 }
 
 export interface ExtensionActiveCapture {
@@ -90,6 +91,10 @@ export interface ExtensionActiveCapture {
   ingestToken: string;
   timeoutAt: string;
   loginUrl: string;
+}
+
+export interface ExtensionPairingRequest {
+  pairingCode: string;
 }
 
 export interface ExtensionCaptureSubmission {
@@ -105,6 +110,7 @@ interface CaptureRuntime {
   id: string;
   method: CaptureMethod;
   ingestToken: string;
+  extensionPairingCode: string | null;
   status: CaptureStatus;
   startedAtMs: number;
   updatedAtMs: number;
@@ -170,6 +176,10 @@ function normalizeCookie(cookie: Partial<StoredCookie> & Pick<StoredCookie, 'nam
 
 function dedupeArgs(...groups: string[][]): string[] {
   return [...new Set(groups.flat().filter(Boolean))];
+}
+
+function generatePairingCode(): string {
+  return randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 }
 
 function pickAuthCookies(cookies: StoredCookie[]): Partial<Record<(typeof AUTH_COOKIE_NAMES)[number], StoredCookie>> {
@@ -299,6 +309,7 @@ class AuthCaptureManager {
       id: randomUUID(),
       method,
       ingestToken: randomUUID(),
+      extensionPairingCode: method === 'extension' ? generatePairingCode() : null,
       status: method === 'extension' ? 'awaiting_user' : 'starting',
       startedAtMs: now,
       updatedAtMs: now,
@@ -336,6 +347,7 @@ class AuthCaptureManager {
       timeoutAt: new Date(capture.timeoutAtMs).toISOString(),
       captureMethod: capture.method,
       loginUrl: LOGIN_URL,
+      extensionPairingCode: capture.extensionPairingCode ?? undefined,
     };
   }
 
@@ -366,10 +378,14 @@ class AuthCaptureManager {
     return { artifact: this.latestArtifact, path: this.latestArtifactPath };
   }
 
-  getActiveExtensionSession(): ExtensionActiveCapture | null {
+  getActiveExtensionSession(pairingCode: string): ExtensionActiveCapture | null {
     this.expireIfTimedOut(this.active);
     const capture = this.active;
     if (!capture || capture.method !== 'extension' || isTerminalStatus(capture.status)) {
+      return null;
+    }
+
+    if (!capture.extensionPairingCode || capture.extensionPairingCode !== pairingCode.trim().toUpperCase()) {
       return null;
     }
 
@@ -422,30 +438,37 @@ class AuthCaptureManager {
       return capture.artifact as CaptureArtifact;
     }
 
-    const user = await getUpstreamUser(accessToken);
-    capture.bridgeSession = createSession({
-      accessToken,
-      refreshToken,
-      userData: payloadTokens.userData,
-      user,
-    });
+    try {
+      const user = await getUpstreamUser(accessToken);
+      capture.bridgeSession = createSession({
+        accessToken,
+        refreshToken,
+        userData: payloadTokens.userData,
+        user,
+      });
 
-    const artifact = this.buildSubmittedArtifact(capture, submission, allCookies, [
-      ...observedResponses,
-      {
-        timestamp: new Date().toISOString(),
-        type: 'note',
-        source: 'extension',
-        method: 'GET',
-        url: `${serverConfig.upstreamBaseUrl}/api/v1/user`,
-        status: 200,
-        payload: user,
-        message: 'Validated extension-captured tokens via upstream user lookup.',
-      },
-    ]);
+      const artifact = this.buildSubmittedArtifact(capture, submission, allCookies, [
+        ...observedResponses,
+        {
+          timestamp: new Date().toISOString(),
+          type: 'note',
+          source: 'extension',
+          method: 'GET',
+          url: `${serverConfig.upstreamBaseUrl}/api/v1/user`,
+          status: 200,
+          payload: user,
+          message: 'Validated extension-captured tokens via upstream user lookup.',
+        },
+      ]);
 
-    await this.finalize(capture, 'succeeded', 'Successfully captured authenticated Boosteroid session via Chrome extension.', artifact);
-    return capture.artifact as CaptureArtifact;
+      await this.finalize(capture, 'succeeded', 'Successfully captured authenticated Boosteroid session via Chrome extension.', artifact);
+      return capture.artifact as CaptureArtifact;
+    } catch (error) {
+      const artifact = this.buildSubmittedArtifact(capture, submission, allCookies, observedResponses);
+      const message = error instanceof Error ? `Extension capture token validation failed: ${error.message}` : 'Extension capture token validation failed.';
+      await this.finalize(capture, 'failed', message, artifact);
+      return capture.artifact as CaptureArtifact;
+    }
   }
 
   private expireIfTimedOut(capture: CaptureRuntime | null): void {

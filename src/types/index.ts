@@ -27,6 +27,7 @@ export interface LoginCaptureStartResponse {
   timeoutAt: string;
   captureMethod: LoginCaptureMethod;
   loginUrl: string;
+  extensionPairingCode?: string;
 }
 
 export interface LoginCaptureSessionStatus {

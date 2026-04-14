@@ -27,20 +27,33 @@ function pushObservedEvent(event) {
   }
 }
 
-async function getBackendBaseUrl() {
-  const stored = await chrome.storage.local.get(['backendBaseUrl']);
-  return stored.backendBaseUrl || DEFAULT_BACKEND_BASE_URL;
+async function getStoredState() {
+  const stored = await chrome.storage.local.get(['backendBaseUrl', 'pairingCode']);
+  return {
+    backendBaseUrl: stored.backendBaseUrl || DEFAULT_BACKEND_BASE_URL,
+    pairingCode: typeof stored.pairingCode === 'string' ? stored.pairingCode.trim().toUpperCase() : '',
+  };
 }
 
 async function getActiveCapture() {
-  const backendBaseUrl = await getBackendBaseUrl();
-  const response = await fetch(`${backendBaseUrl}/auth/extension/active`);
+  const { backendBaseUrl, pairingCode } = await getStoredState();
+  if (!pairingCode) {
+    return null;
+  }
+
+  const response = await fetch(`${backendBaseUrl}/auth/extension/active`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ pairingCode }),
+  });
   if (!response.ok) {
     return null;
   }
 
   const data = await response.json();
-  return { backendBaseUrl, data };
+  return { backendBaseUrl, pairingCode, data };
 }
 
 async function collectCookiesForDomain(domain) {
@@ -82,7 +95,7 @@ async function submitCapture(reason) {
       return;
     }
 
-    const { backendBaseUrl, data } = active;
+    const { backendBaseUrl, pairingCode, data } = active;
     if (lastSubmittedCaptureId === data.id) {
       return;
     }
@@ -106,6 +119,7 @@ async function submitCapture(reason) {
       extensionMetadata: {
         reason,
         backendBaseUrl,
+        pairingCode,
         extensionVersion: chrome.runtime.getManifest().version,
         userAgent: navigator.userAgent,
       },
@@ -130,9 +144,16 @@ async function submitCapture(reason) {
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const current = await chrome.storage.local.get(['backendBaseUrl']);
+  const current = await chrome.storage.local.get(['backendBaseUrl', 'pairingCode']);
+  const nextState = {};
   if (!current.backendBaseUrl) {
-    await chrome.storage.local.set({ backendBaseUrl: DEFAULT_BACKEND_BASE_URL });
+    nextState.backendBaseUrl = DEFAULT_BACKEND_BASE_URL;
+  }
+  if (!current.pairingCode) {
+    nextState.pairingCode = '';
+  }
+  if (Object.keys(nextState).length > 0) {
+    await chrome.storage.local.set(nextState);
   }
 });
 
@@ -158,9 +179,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'openstroid:get-state') {
-    void getBackendBaseUrl().then((backendBaseUrl) => {
+    void getStoredState().then(({ backendBaseUrl, pairingCode }) => {
       sendResponse({
         backendBaseUrl,
+        pairingCode,
         observedEventCount: observedResponses.length,
         lastSubmittedCaptureId,
       });
@@ -168,8 +190,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === 'openstroid:set-backend-base-url' && typeof message.backendBaseUrl === 'string') {
-    void chrome.storage.local.set({ backendBaseUrl: message.backendBaseUrl.trim() || DEFAULT_BACKEND_BASE_URL }).then(() => {
+  if (message?.type === 'openstroid:set-settings') {
+    const backendBaseUrl = typeof message.backendBaseUrl === 'string' && message.backendBaseUrl.trim()
+      ? message.backendBaseUrl.trim()
+      : DEFAULT_BACKEND_BASE_URL;
+    const pairingCode = typeof message.pairingCode === 'string'
+      ? message.pairingCode.trim().toUpperCase()
+      : '';
+    void chrome.storage.local.set({ backendBaseUrl, pairingCode }).then(() => {
+      lastSubmittedCaptureId = null;
       sendResponse({ ok: true });
     });
     return true;
