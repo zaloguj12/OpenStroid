@@ -21,6 +21,7 @@ import {
   IconArrowRight,
   IconBrandChrome,
   IconCheck,
+  IconDeviceDesktop,
   IconExternalLink,
   IconPlayerStop,
   IconRefresh,
@@ -49,14 +50,14 @@ function describeStatus(status: LoginCaptureStatus, method: LoginCaptureMethod |
   switch (status) {
     case 'starting':
       return method === 'browser'
-        ? 'Launching the backend browser fallback.'
-        : 'Creating an extension capture session.';
+        ? 'Launching the Electron-managed backend browser fallback.'
+        : 'Creating an extension capture session in the desktop bridge.';
     case 'awaiting_user':
       return method === 'browser'
-        ? 'Complete login in the backend-launched browser window.'
-        : 'Use the OpenStroid Chrome extension while you log in on Boosteroid in your real browser.';
+        ? 'Complete login in the Electron-managed backend browser window.'
+        : 'Use the OpenStroid Chrome extension while you log in on Boosteroid in your normal Chrome profile.';
     case 'succeeded':
-      return 'Captured upstream auth state. OpenStroid is establishing its own first-party session.';
+      return 'Captured upstream auth state. OpenStroid Desktop is establishing its local first-party session.';
     case 'failed':
       return 'Capture failed before a usable upstream session was received.';
     case 'cancelled':
@@ -130,8 +131,8 @@ export function LoginPage() {
       const fallback = axiosErr.response?.status === 409
         ? 'A login capture is already running. Follow that session or cancel it first.'
         : method === 'browser'
-          ? 'Could not start the backend browser fallback.'
-          : 'Could not start the extension capture session.';
+          ? 'Could not start the Electron-managed backend browser fallback.'
+          : 'Could not start the desktop extension capture session.';
       setServerError(axiosErr.response?.data?.message || fallback);
     } finally {
       setIsSubmitting(false);
@@ -197,7 +198,7 @@ export function LoginPage() {
       }}
     >
       <Center style={{ position: 'relative', zIndex: 1, width: '100%', padding: '24px' }}>
-        <Stack gap="xl" w="100%" maw={920}>
+        <Stack gap="xl" w="100%" maw={960}>
           <Stack gap={6} align="center">
             <Box
               style={{
@@ -215,11 +216,11 @@ export function LoginPage() {
             </Box>
             <Title order={1} ta="center" fw={800} style={{ fontSize: '2rem', letterSpacing: '-0.02em' }}>
               <Text component="span" inherit variant="gradient" gradient={{ from: 'brand.3', to: 'accent.4', deg: 135 }}>
-                OpenStroid
+                OpenStroid Desktop
               </Text>
             </Title>
             <Text c="dimmed" size="sm" ta="center">
-              Primary login capture now runs through a Chrome extension in your real browser profile.
+              Electron coordinates local bridge capture while your Chrome extension watches the real Boosteroid browser session.
             </Text>
           </Stack>
 
@@ -235,14 +236,14 @@ export function LoginPage() {
           >
             <Stack gap="lg">
               <Group justify="space-between" align="flex-start">
-                <Stack gap={4} maw={620}>
-                  <Title order={3} fw={600}>Sign in with Boosteroid</Title>
+                <Stack gap={4} maw={650}>
+                  <Title order={3} fw={600}>Connect your Boosteroid session</Title>
                   <Text size="sm" c="dimmed">
-                    Install the unpacked OpenStroid Chrome extension, start a capture session here, then log in to Boosteroid in your normal Chrome profile. The extension observes the real browser session and sends upstream cookies and auth evidence back to the OpenStroid backend.
+                    This desktop app is the primary OpenStroid client. Start a capture session here, paste the pairing code into the companion Chrome extension, then log in on Boosteroid in your normal Chrome profile. The extension sends upstream cookies and auth evidence to the local Electron bridge.
                   </Text>
                 </Stack>
                 <ThemeIcon size={44} radius="xl" variant="light" color="brand">
-                  <IconBrandChrome size={22} />
+                  <IconDeviceDesktop size={22} />
                 </ThemeIcon>
               </Group>
 
@@ -251,10 +252,10 @@ export function LoginPage() {
                 size="sm"
                 icon={<ThemeIcon color="brand" size={22} radius="xl"><IconCheck size={14} /></ThemeIcon>}
               >
-                  <List.Item>Load the unpacked extension from <Code>{EXTENSION_PATH}</Code> into Chrome.</List.Item>
-                  <List.Item>In the extension popup, keep the backend URL set to <Code>http://localhost:3001</Code> for local dev.</List.Item>
-                  <List.Item>When prompted by the extension popup, paste the pairing code from this page so the extension can fetch the active ingest token.</List.Item>
-                  <List.Item>Start capture below, then complete login on <Code>boosteroid.com</Code> in the same Chrome profile.</List.Item>
+                <List.Item>Run OpenStroid Desktop so the local bridge is available on <Code>http://127.0.0.1:3001</Code>.</List.Item>
+                <List.Item>Load the unpacked Chrome extension from <Code>{EXTENSION_PATH}</Code>.</List.Item>
+                <List.Item>Set the extension backend URL to <Code>http://127.0.0.1:3001</Code> and paste the pairing code shown below.</List.Item>
+                <List.Item>Log in on <Code>boosteroid.com</Code> in that same Chrome profile.</List.Item>
               </List>
 
               {serverError && (
@@ -272,15 +273,15 @@ export function LoginPage() {
                   onClick={() => void startCapture('extension')}
                   loading={isSubmitting}
                 >
-                  Start extension capture
+                  Start desktop extension capture
                 </Button>
                 <Button
                   size="md"
                   variant="light"
-                  leftSection={<IconExternalLink size={16} />}
+                  leftSection={<IconBrandChrome size={16} />}
                   onClick={() => window.open('https://boosteroid.com/', '_blank', 'noopener,noreferrer')}
                 >
-                  Open Boosteroid login
+                  Open Boosteroid in Chrome
                 </Button>
                 <Button
                   size="md"
@@ -289,13 +290,13 @@ export function LoginPage() {
                   onClick={() => void handleRefresh()}
                   disabled={isSubmitting}
                 >
-                  Refresh status
+                  Refresh capture status
                 </Button>
               </Group>
 
               <Alert color={statusTone} variant="light" title={capture ? `Status: ${capture.status}` : 'No capture running'}>
                 <Stack gap={6}>
-                  <Text size="sm">{capture ? describeStatus(capture.status, capture.captureMethod) : 'Start a capture session, then complete login in Chrome with the extension enabled.'}</Text>
+                  <Text size="sm">{capture ? describeStatus(capture.status, capture.captureMethod) : 'Start a capture session in OpenStroid Desktop, then finish the pairing flow in Chrome.'}</Text>
                   {capture && (
                     <>
                       <Text size="xs" c="dimmed">Capture ID: <Code>{capture.id}</Code></Text>
@@ -314,7 +315,7 @@ export function LoginPage() {
                   {capture && !TERMINAL_STATUSES.has(capture.status) && (
                     <Group gap="sm">
                       <Loader size="sm" type="dots" color="brand" />
-                      <Text size="xs" c="dimmed">Polling capture status every {POLL_INTERVAL_MS / 1000}s.</Text>
+                      <Text size="xs" c="dimmed">Electron is polling capture status every {POLL_INTERVAL_MS / 1000}s.</Text>
                     </Group>
                   )}
                   {capture?.status === 'succeeded' && (
@@ -328,7 +329,7 @@ export function LoginPage() {
                         navigate(from, { replace: true });
                       }}
                     >
-                      Continue to library
+                      Continue to my library
                     </Button>
                   )}
                   {capture && !TERMINAL_STATUSES.has(capture.status) && (
@@ -348,9 +349,9 @@ export function LoginPage() {
               <Divider color="dark.4" />
 
               <Stack gap="xs">
-                <Title order={4} fw={600}>Optional backend browser fallback</Title>
+                <Title order={4} fw={600}>Fallback: Electron-managed browser capture</Title>
                 <Text size="sm" c="dimmed">
-                  Use only if the extension flow is unavailable. This still launches a backend-owned browser and may be less reliable against Turnstile than the extension path.
+                  Use only if the extension path is temporarily unavailable. This launches a backend-owned browser from the desktop bridge and remains secondary to the Chrome-extension flow.
                 </Text>
                 <Group>
                   <Button
@@ -360,17 +361,17 @@ export function LoginPage() {
                     onClick={() => void startCapture('browser')}
                     loading={isSubmitting}
                   >
-                    Start backend browser fallback
+                    Start browser fallback
                   </Button>
                   <Text size="sm" c="dimmed">
-                    Load unpacked extension from <Code>{EXTENSION_PATH}</Code>
+                    Companion extension folder: <Code>{EXTENSION_PATH}</Code>
                   </Text>
                 </Group>
               </Stack>
             </Stack>
           </Paper>
 
-          <AuthCaptureDebugPanel title="Latest debug capture" />
+          <AuthCaptureDebugPanel title="Latest desktop bridge capture" />
         </Stack>
       </Center>
     </Box>

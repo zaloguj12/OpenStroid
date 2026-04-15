@@ -5,13 +5,15 @@
   "description": "Open-source cloud gaming client",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "tsx watch server/index.ts",
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
     "dev:web": "vite",
-    "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
+    "dev:electron": "sh -c 'until curl -sf http://127.0.0.1:3000 >/dev/null 2>&1; do sleep 1; done; NODE_OPTIONS=\"--import tsx\" ELECTRON_RENDERER_URL=http://127.0.0.1:3000 electron electron/main.ts'",
+    "dev:bridge": "tsx watch server/index.ts",
+    "build": "tsc -b && tsc -p tsconfig.server.json && tsc -p tsconfig.electron.json && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node build/server/server/index.js"
+    "start": "electron build/electron/electron/main.js",
+    "start:bridge": "node build/server/server/index.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -23,6 +25,7 @@
     "@tabler/icons-react": "^3.41.1",
     "axios": "^1.15.0",
     "cookie-parser": "^1.4.7",
+    "electron": "^37.2.1",
     "express": "^5.2.1",
     "playwright": "^1.53.1",
     "react": "^19.2.4",

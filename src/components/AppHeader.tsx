@@ -29,7 +29,7 @@ export function AppHeader() {
           variant="gradient"
           gradient={{ from: 'brand.4', to: 'accent.4', deg: 135 }}
         >
-          OpenStroid
+          OpenStroid Desktop
         </Text>
       </Group>
 

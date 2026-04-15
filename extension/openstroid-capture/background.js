@@ -1,4 +1,4 @@
-const DEFAULT_BACKEND_BASE_URL = 'http://localhost:3001';
+const DEFAULT_BACKEND_BASE_URL = 'http://127.0.0.1:3001';
 const AUTH_COOKIE_NAMES = ['access_token', 'refresh_token', 'boosteroid_auth', 'qr_auth_code'];
 const RELEVANT_PATH_PATTERNS = [
   '/api/v1/auth/login',
