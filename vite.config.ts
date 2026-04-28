@@ -19,7 +19,7 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      '/stream': {
+      '/api': {
         target: backendUrl,
         changeOrigin: true,
         secure: false,

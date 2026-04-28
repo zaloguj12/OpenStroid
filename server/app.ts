@@ -983,7 +983,7 @@ export function createBridgeApp() {
     }
   });
 
-  app.post('/stream/launch', async (req, res, next) => {
+  async function handleStreamLaunch(req: Request, res: Response, next: NextFunction) {
     const session = requireSession(req, res);
     if (!session) return;
 
@@ -1002,7 +1002,10 @@ export function createBridgeApp() {
       }
       next(error);
     }
-  });
+  }
+
+  app.post('/api/stream/launch', handleStreamLaunch);
+  app.post('/stream/launch', handleStreamLaunch);
 
   const indexFile = path.join(serverConfig.distDir, 'index.html');
   if (fs.existsSync(indexFile)) {

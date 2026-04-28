@@ -33,6 +33,6 @@ export const API_CONFIG = {
     session: '/auth/session',
     me: '/me',
     installedGames: '/library/installed',
-    streamLaunch: '/stream/launch',
+    streamLaunch: '/api/stream/launch',
   },
 } as const;
