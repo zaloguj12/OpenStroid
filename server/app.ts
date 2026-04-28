@@ -43,7 +43,7 @@ interface StreamLaunchResult {
     gateways: unknown[];
     accessToken: string;
     authDataToken: string;
-    preferredCodec: 'auto';
+    preferredCodec: 'h264';
   };
   localStorage: Record<string, unknown>;
   cookies: ReturnType<typeof getCookieAuthCookies>;
@@ -685,7 +685,7 @@ export function createBridgeApp() {
         gateways,
         accessToken: streamAuth.accessToken,
         authDataToken: streamAuth.authDataToken,
-        preferredCodec: 'auto',
+        preferredCodec: 'h264',
       },
       localStorage: {
         appId: String(appId),

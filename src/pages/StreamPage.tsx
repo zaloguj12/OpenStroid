@@ -2,8 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionIcon, Badge, Box, Group, Paper, Stack, Text } from '@mantine/core';
 import { IconMaximize, IconPlayerStop } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { OpenStroidStreamClient } from '../stream/OpenStroidStreamClient';
+import { OpenStroidStreamClient, type StreamCursorState } from '../stream/OpenStroidStreamClient';
 import type { StreamLaunchResponse } from '../types';
+
+const FALLBACK_CURSOR_IMAGE =
+  'data:image/svg+xml;base64,' +
+  btoa(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M4 3v25.5l6.9-6.2 4.1 9.7 4.5-1.9-4.1-9.5h9.8L4 3Z" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/></svg>',
+  );
 
 function readFallbackLaunch(): StreamLaunchResponse | null {
   try {
@@ -17,10 +23,13 @@ function readFallbackLaunch(): StreamLaunchResponse | null {
 export function StreamPage() {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const clientRef = useRef<OpenStroidStreamClient | null>(null);
   const [status, setStatus] = useState('Preparing');
   const [logs, setLogs] = useState<string[]>([]);
   const [launch, setLaunch] = useState<StreamLaunchResponse | null | undefined>(undefined);
+  const [cursor, setCursor] = useState<StreamCursorState>({ x: 0.5, y: 0.5, visible: false, imageUrl: null });
+  const [videoBox, setVideoBox] = useState({ left: 0, top: 0, width: 0, height: 0 });
 
   const title = useMemo(() => {
     const name = launch?.app?.name;
@@ -63,6 +72,7 @@ export function StreamPage() {
 
     const client = new OpenStroidStreamClient({
       videoElement: videoRef.current,
+      audioElement: audioRef.current ?? undefined,
       onStatus: (nextStatus) => {
         console.log('[OpenStroid stream] status', nextStatus);
         setStatus(nextStatus);
@@ -71,6 +81,7 @@ export function StreamPage() {
         console.log('[OpenStroid stream]', message);
         setLogs((current) => [message, ...current].slice(0, 16));
       },
+      onCursor: setCursor,
     });
     clientRef.current = client;
     void client.connect(launch.streamClientConfig).catch((error: unknown) => {
@@ -87,6 +98,53 @@ export function StreamPage() {
     };
   }, [launch]);
 
+  useEffect(() => {
+    function updateVideoBox() {
+      const video = videoRef.current;
+      if (!video) return;
+      const rect = video.getBoundingClientRect();
+      const videoWidth = video.videoWidth || 16;
+      const videoHeight = video.videoHeight || 9;
+      const frameRatio = rect.width / Math.max(rect.height, 1);
+      const videoRatio = videoWidth / Math.max(videoHeight, 1);
+
+      if (videoRatio > frameRatio) {
+        const height = rect.width / videoRatio;
+        setVideoBox({
+          left: rect.left,
+          top: rect.top + (rect.height - height) / 2,
+          width: rect.width,
+          height,
+        });
+        return;
+      }
+
+      const width = rect.height * videoRatio;
+      setVideoBox({
+        left: rect.left + (rect.width - width) / 2,
+        top: rect.top,
+        width,
+        height: rect.height,
+      });
+    }
+
+    updateVideoBox();
+    window.addEventListener('resize', updateVideoBox);
+    window.addEventListener('fullscreenchange', updateVideoBox);
+    return () => {
+      window.removeEventListener('resize', updateVideoBox);
+      window.removeEventListener('fullscreenchange', updateVideoBox);
+    };
+  }, [launch]);
+
+  const cursorPosition = useMemo(
+    () => ({
+      left: videoBox.left + Math.min(Math.max(cursor.x, 0), 1) * videoBox.width,
+      top: videoBox.top + Math.min(Math.max(cursor.y, 0), 1) * videoBox.height,
+    }),
+    [cursor.x, cursor.y, videoBox],
+  );
+
   return (
     <Box
       style={{
@@ -101,6 +159,31 @@ export function StreamPage() {
         autoPlay
         playsInline
         controls={false}
+        muted
+        onLoadedMetadata={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const videoRatio = event.currentTarget.videoWidth / Math.max(event.currentTarget.videoHeight, 1);
+          const frameRatio = rect.width / Math.max(rect.height, 1);
+          if (videoRatio > frameRatio) {
+            const height = rect.width / videoRatio;
+            setVideoBox({ left: rect.left, top: rect.top + (rect.height - height) / 2, width: rect.width, height });
+          } else {
+            const width = rect.height * videoRatio;
+            setVideoBox({ left: rect.left + (rect.width - width) / 2, top: rect.top, width, height: rect.height });
+          }
+          console.log('[OpenStroid stream] video metadata', {
+            videoWidth: event.currentTarget.videoWidth,
+            videoHeight: event.currentTarget.videoHeight,
+            readyState: event.currentTarget.readyState,
+          });
+        }}
+        onPlaying={(event) => {
+          console.log('[OpenStroid stream] video playing', {
+            videoWidth: event.currentTarget.videoWidth,
+            videoHeight: event.currentTarget.videoHeight,
+            readyState: event.currentTarget.readyState,
+          });
+        }}
         style={{
           width: '100vw',
           height: '100vh',
@@ -108,6 +191,27 @@ export function StreamPage() {
           background: '#000',
           display: 'block',
           outline: 'none',
+          cursor: 'none',
+        }}
+      />
+      <audio ref={audioRef} autoPlay />
+
+      <img
+        src={cursor.imageUrl || FALLBACK_CURSOR_IMAGE}
+        alt=""
+        draggable={false}
+        style={{
+          position: 'fixed',
+          left: cursorPosition.left,
+          top: cursorPosition.top,
+          width: 28,
+          height: 36,
+          objectFit: 'contain',
+          pointerEvents: 'none',
+          zIndex: 8,
+          opacity: cursor.visible ? 1 : 0,
+          transform: 'translate(0, 0)',
+          filter: cursor.imageUrl ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.75))' : 'none',
         }}
       />
 
@@ -190,8 +294,8 @@ export function StreamPage() {
               <Text size="sm" c="dimmed">
                 Connecting to Boosteroid gateway...
               </Text>
-            ) : logs.map((line) => (
-              <Text key={line} size="xs" ff="monospace" c="dimmed" style={{ wordBreak: 'break-word' }}>
+            ) : logs.map((line, index) => (
+              <Text key={`${index}-${line}`} size="xs" ff="monospace" c="dimmed" style={{ wordBreak: 'break-word' }}>
                 {line}
               </Text>
             ))}

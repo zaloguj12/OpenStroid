@@ -16,11 +16,24 @@ type StreamStatus =
 
 type LogHandler = (message: string) => void;
 type StatusHandler = (status: StreamStatus | string) => void;
+export interface StreamCursorState {
+  x: number;
+  y: number;
+  visible: boolean;
+  imageUrl?: string | null;
+  offsetX?: number;
+  offsetY?: number;
+  name?: string;
+}
+
+type CursorHandler = (cursor: StreamCursorState) => void;
 
 interface StreamClientOptions {
   videoElement: HTMLVideoElement;
+  audioElement?: HTMLAudioElement;
   onLog?: LogHandler;
   onStatus?: StatusHandler;
+  onCursor?: CursorHandler;
 }
 
 type GatewayCandidate = string | { address?: unknown; gw?: unknown; gateway?: unknown; url?: unknown };
@@ -106,10 +119,200 @@ function connectionType() {
   return connection?.effectiveType ?? 'unknown';
 }
 
+function numberFromMessage(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function boolFromMessage(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function inflateCursorResource(resource: string) {
+  const decompressionStream = (globalThis as typeof globalThis & {
+    DecompressionStream?: new (format: CompressionFormat) => TransformStream<Uint8Array, Uint8Array>;
+  }).DecompressionStream;
+  if (!decompressionStream) return null;
+
+  for (const format of ['deflate', 'deflate-raw', 'gzip'] as CompressionFormat[]) {
+    try {
+      const stream = new Blob([base64ToBytes(resource)]).stream().pipeThrough(new decompressionStream(format));
+      const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+      return inflated;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function cursorResourceToImageUrl(resource: unknown, zipped: unknown) {
+  if (typeof resource !== 'string' || !resource.trim()) return null;
+  const trimmed = resource.trim();
+
+  if (trimmed.startsWith('data:image/')) return trimmed;
+
+  if (zipped === true) {
+    const inflated = await inflateCursorResource(trimmed);
+    if (!inflated) return null;
+    const asText = new TextDecoder().decode(inflated);
+    if (asText.trim().startsWith('<svg')) {
+      return `data:image/svg+xml;base64,${btoa(asText)}`;
+    }
+    return URL.createObjectURL(new Blob([inflated], { type: 'image/x-icon' }));
+  }
+
+  if (trimmed.startsWith('<svg')) return `data:image/svg+xml;base64,${btoa(trimmed)}`;
+  return `data:image/x-icon;base64,${trimmed}`;
+}
+
+function normalizeWebRtcApiHost(gatewayHost: string) {
+  return gatewayHost.split(':')[0];
+}
+
+function filterAllowedCodecs(sdp: string, allowedCodecs: string[]) {
+  if (!sdp || allowedCodecs.length === 0) return sdp;
+
+  const eol = sdp.includes('\r\n') ? '\r\n' : '\n';
+  const normalizedAllowed = allowedCodecs
+    .map((entry) => {
+      const [type, codec] = entry.split('/');
+      if (!type || !codec) return null;
+      return { type: type.toLowerCase(), codec: codec.toLowerCase() };
+    })
+    .filter((entry): entry is { type: string; codec: string } => Boolean(entry));
+
+  const lines = sdp.split(eol);
+  const sections: string[][] = [];
+  let current: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('m=')) {
+      if (current.length) sections.push(current);
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length) sections.push(current);
+
+  return sections
+    .map((section) => {
+      const firstLine = section[0];
+      if (!firstLine?.startsWith('m=')) return section.join(eol);
+
+      const mediaType = firstLine.split(' ')[0].slice(2);
+      if (mediaType !== 'audio' && mediaType !== 'video') return section.join(eol);
+
+      const codecMap = new Map<string, string>();
+      const fmtpMap = new Map<string, string>();
+      const rtxAssociations = new Map<string, string>();
+      const redundancyAssociations = new Map<string, string[]>();
+
+      for (const line of section) {
+        if (line.startsWith('a=rtpmap:')) {
+          const payload = line.substring(9).split(' ')[0].trim();
+          const codec = line.substring(9).split(' ')[1]?.split('/')[0]?.toLowerCase();
+          if (payload && codec) codecMap.set(payload, codec);
+          continue;
+        }
+
+        if (!line.startsWith('a=fmtp:')) continue;
+        const fmtpBody = line.substring(7).trim();
+        const spaceIdx = fmtpBody.indexOf(' ');
+        if (spaceIdx === -1) continue;
+        const payload = fmtpBody.substring(0, spaceIdx).trim();
+        const params = fmtpBody.substring(spaceIdx + 1);
+        fmtpMap.set(payload, params);
+
+        const aptMatch = params.match(/apt=(\d+)/i);
+        if (aptMatch) {
+          rtxAssociations.set(payload, aptMatch[1]);
+          continue;
+        }
+
+        if (/^\d+(?:\/\d+)+$/i.test(params.trim())) {
+          redundancyAssociations.set(payload, params.trim().split('/'));
+        }
+      }
+
+      const allowedPayloads = new Set<string>();
+      codecMap.forEach((codec, payload) => {
+        if (codec === 'rtx') return;
+        if (normalizedAllowed.some((allowed) => allowed.type === mediaType && allowed.codec === codec)) {
+          allowedPayloads.add(payload);
+        }
+      });
+
+      for (const [payload, params] of fmtpMap.entries()) {
+        const fmtp = params.toLowerCase();
+        if (codecMap.get(payload) === 'h264') {
+          const profile = fmtp.match(/profile-level-id=([0-9a-f]{6})/i);
+          if (profile && parseInt(profile[1].substring(0, 2), 16) >= 0x64) {
+            allowedPayloads.delete(payload);
+            continue;
+          }
+          const packetizationMode = fmtp.match(/packetization-mode=([0-9]+)/i);
+          if (packetizationMode && parseInt(packetizationMode[1], 10) === 0) {
+            allowedPayloads.delete(payload);
+            continue;
+          }
+        }
+
+        if (codecMap.get(payload) === 'av1') {
+          const profile = fmtp.match(/profile=([0-9]+)/i);
+          if (profile && parseInt(profile[1], 10) !== 0) {
+            allowedPayloads.delete(payload);
+          }
+        }
+      }
+
+      rtxAssociations.forEach((primary, rtxPayload) => {
+        if (allowedPayloads.has(primary)) allowedPayloads.add(rtxPayload);
+      });
+      redundancyAssociations.forEach((primaries, redundantPayload) => {
+        if (primaries.every((payload) => allowedPayloads.has(payload))) allowedPayloads.add(redundantPayload);
+      });
+
+      if (!allowedPayloads.size) return section.join(eol);
+
+      const orderedPayloads: string[] = [];
+      for (const allowed of normalizedAllowed) {
+        codecMap.forEach((codec, payload) => {
+          if (allowed.type === mediaType && allowed.codec === codec && allowedPayloads.has(payload)) {
+            orderedPayloads.push(payload);
+          }
+        });
+      }
+      codecMap.forEach((_codec, payload) => {
+        if (allowedPayloads.has(payload) && !orderedPayloads.includes(payload)) orderedPayloads.push(payload);
+      });
+
+      const mParts = firstLine.split(' ');
+      const filtered = [[...mParts.slice(0, 3), ...orderedPayloads].join(' ')];
+      for (const line of section.slice(1)) {
+        if (line.startsWith('a=rtpmap:') || line.startsWith('a=fmtp:') || line.startsWith('a=rtcp-fb:')) {
+          const payload = line.substring(line.indexOf(':') + 1).split(' ')[0].trim();
+          if (!allowedPayloads.has(payload)) continue;
+        }
+        filtered.push(line);
+      }
+
+      return filtered.join(eol);
+    })
+    .join(eol);
+}
+
 export class OpenStroidStreamClient {
   private readonly videoElement: HTMLVideoElement;
+  private readonly audioElement: HTMLAudioElement;
   private readonly onLog: LogHandler;
   private readonly onStatus: StatusHandler;
+  private readonly onCursor: CursorHandler;
   private ws: WebSocket | null = null;
   private pc: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
@@ -123,6 +326,8 @@ export class OpenStroidStreamClient {
   private remoteIceTimer: number | null = null;
   private statsTimer: number | null = null;
   private remoteIceDedup = new Set<string>();
+  private cursorImages = new Map<string, string | null>();
+  private cursor: StreamCursorState = { x: 0.5, y: 0.5, visible: false, imageUrl: null };
   private inputInstalled = false;
   private eventCount = 0;
   private statsPrev: {
@@ -137,8 +342,10 @@ export class OpenStroidStreamClient {
 
   constructor(options: StreamClientOptions) {
     this.videoElement = options.videoElement;
+    this.audioElement = options.audioElement ?? new Audio();
     this.onLog = options.onLog ?? (() => undefined);
     this.onStatus = options.onStatus ?? (() => undefined);
+    this.onCursor = options.onCursor ?? (() => undefined);
   }
 
   async connect(config: StreamClientConfig) {
@@ -162,7 +369,7 @@ export class OpenStroidStreamClient {
     this.setStatus('Preparing');
     this.log(`Session ${this.sessionId}`);
     this.gatewayHost = normalizeGatewayHost(await this.resolveGateway(config.homeUrl));
-    this.webrtcApiBase = `https://${this.gatewayHost}/webrtc`;
+    this.webrtcApiBase = `https://${normalizeWebRtcApiHost(this.gatewayHost)}/webrtc`;
     this.log(`Resolved gateway ${this.gatewayHost}; queryLength=${this.sessionQuery.length}`);
 
     await this.openControlWebSocket();
@@ -193,6 +400,8 @@ export class OpenStroidStreamClient {
     this.peerId = '';
     this.remoteIceDedup.clear();
     this.statsPrev = null;
+    this.cursor = { x: 0.5, y: 0.5, visible: false, imageUrl: null };
+    this.onCursor(this.cursor);
     if (!silent) this.setStatus('Disconnected');
   }
 
@@ -212,21 +421,7 @@ export class OpenStroidStreamClient {
 
   private async selectedCodec() {
     if (this.preferredCodec === 'av1' || this.preferredCodec === 'h264') return this.preferredCodec;
-    try {
-      const result = await navigator.mediaCapabilities?.decodingInfo({
-        type: 'media-source',
-        video: {
-          contentType: 'video/webm; codecs=av01.0.08M.08',
-          width: Math.max(1280, window.innerWidth),
-          height: Math.max(720, window.innerHeight),
-          bitrate: 10000000,
-          framerate: 60,
-        },
-      });
-      return result?.supported ? 'av1' : 'h264';
-    } catch {
-      return 'h264';
-    }
+    return 'h264';
   }
 
   private async openControlWebSocket() {
@@ -243,12 +438,12 @@ export class OpenStroidStreamClient {
       devType: 'desktop',
       os: detectPlatformCode(),
       rtcAudio: 'pcm',
-      codec,
     });
+    if (codec === 'av1') params.set('codec', 'av1');
     const wsUrl = `wss://${this.gatewayHost}/?${this.sessionQuery}&${params.toString()}`;
 
     this.setStatus('Opening control socket');
-    this.log(`Opening control socket on ${this.gatewayHost}`);
+    this.log(`Opening control socket on ${this.gatewayHost}; codec=${codec}`);
     await new Promise<void>((resolve, reject) => {
       let settled = false;
       const ws = new WebSocket(wsUrl);
@@ -288,11 +483,17 @@ export class OpenStroidStreamClient {
     }
 
     if (message.type === 'stream' && message.action === 'getstatus') {
-      this.sendEvent({
-        type: 'stream',
-        action: 'status',
-        value: { page: document.visibilityState, network_type: connectionType() },
-      });
+      this.sendGatewayStatus();
+      return;
+    }
+
+    if (message.type === 'cursor') {
+      await this.handleRemoteCursor(message);
+      return;
+    }
+
+    if (message.type === 'mouse') {
+      this.handleRemoteMouse(message);
       return;
     }
 
@@ -302,6 +503,45 @@ export class OpenStroidStreamClient {
     }
 
     this.log(`Control: ${JSON.stringify(message).slice(0, 300)}`);
+  }
+
+  private async handleRemoteCursor(message: Record<string, unknown>) {
+    const name = typeof message.name === 'string' ? message.name : this.cursor.name;
+    let imageUrl = name ? this.cursorImages.get(name) : this.cursor.imageUrl;
+
+    if (name && message.resource) {
+      imageUrl = await cursorResourceToImageUrl(message.resource, message.zipped);
+      this.cursorImages.set(name, imageUrl);
+    }
+
+    const x = numberFromMessage(message.X) ?? this.cursor.x;
+    const y = numberFromMessage(message.Y) ?? this.cursor.y;
+    this.cursor = {
+      x,
+      y,
+      visible: boolFromMessage(message.isVisible, this.cursor.visible),
+      imageUrl: imageUrl ?? null,
+      offsetX: numberFromMessage(message.offsetX) ?? this.cursor.offsetX ?? 0,
+      offsetY: numberFromMessage(message.offsetY) ?? this.cursor.offsetY ?? 0,
+      name,
+    };
+    this.onCursor(this.cursor);
+  }
+
+  private handleRemoteMouse(message: Record<string, unknown>) {
+    const x = numberFromMessage(message.X);
+    const y = numberFromMessage(message.Y);
+    const offsetX = numberFromMessage(message.offsetX);
+    const offsetY = numberFromMessage(message.offsetY);
+    this.cursor = {
+      ...this.cursor,
+      x: x ?? this.cursor.x,
+      y: y ?? this.cursor.y,
+      visible: boolFromMessage(message.isVisible, this.cursor.visible),
+      offsetX: offsetX ?? this.cursor.offsetX ?? 0,
+      offsetY: offsetY ?? this.cursor.offsetY ?? 0,
+    };
+    this.onCursor(this.cursor);
   }
 
   private async startWebRtcTransport() {
@@ -321,10 +561,28 @@ export class OpenStroidStreamClient {
 
     pc.ontrack = (event) => {
       const stream = event.streams[0];
-      if (stream) {
-        this.log(`Received remote stream tracks=${stream.getTracks().length}`);
+      if (!stream) return;
+      const hasVideo = stream.getVideoTracks().length > 0;
+      const hasAudio = stream.getAudioTracks().length > 0;
+      this.log(`Received remote stream tracks=${stream.getTracks().length} video=${hasVideo} audio=${hasAudio}`);
+
+      if (hasVideo) {
+        this.videoElement.autoplay = true;
+        this.videoElement.playsInline = true;
         this.videoElement.srcObject = stream;
-        void this.videoElement.play().catch(() => undefined);
+        void this.videoElement.play().then(() => {
+          this.log(`Video playback started readyState=${this.videoElement.readyState}`);
+        }).catch((error: unknown) => {
+          this.log(`Video play failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+
+      if (hasAudio) {
+        this.audioElement.autoplay = true;
+        this.audioElement.srcObject = stream;
+        void this.audioElement.play().catch((error: unknown) => {
+          this.log(`Audio play failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
       }
     };
     pc.onicecandidate = (event) => {
@@ -335,6 +593,7 @@ export class OpenStroidStreamClient {
       if (pc.connectionState === 'connected') {
         this.setStatus('Streaming');
         this.sendEvent({ type: 'settings', action: 'ready' });
+        this.sendEvent({ type: 'stream', action: 'page', is_visible: !document.hidden });
         this.startStatsLoop();
       }
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
@@ -342,12 +601,12 @@ export class OpenStroidStreamClient {
       }
     };
 
-    pc.addTransceiver('video', { direction: 'recvonly' });
-    pc.addTransceiver('audio', { direction: 'recvonly' });
-
-    const offer = await pc.createOffer();
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    });
     this.log(`Created WebRTC offer length=${offer.sdp?.length ?? 0}`);
-    offer.sdp = this.prepareOfferSdp(offer.sdp ?? '');
+    offer.sdp = await this.prepareOfferSdp(offer.sdp ?? '');
     await pc.setLocalDescription(offer);
     const answer = await this.sendOffer(offer);
     this.log(`Received WebRTC answer length=${answer.sdp.length}`);
@@ -355,14 +614,67 @@ export class OpenStroidStreamClient {
     this.startRemoteIcePolling();
   }
 
-  private prepareOfferSdp(sdp: string) {
-    return sdp
+  private async prepareOfferSdp(sdp: string) {
+    const gatewayCodec = await this.fetchGatewayCodec();
+    const allowAv1 = gatewayCodec !== 'H264' && this.preferredCodec === 'av1';
+    const allowedCodecs = [
+      ...(allowAv1 ? ['video/AV1'] : []),
+      'video/H264',
+      'video/rtx',
+      'video/flexfec-03',
+      'audio/red',
+      'audio/opus',
+    ];
+
+    this.log(`Filtering SDP codecs=${allowedCodecs.join(',')} gatewayCodec=${gatewayCodec || 'unknown'}`);
+
+    return filterAllowedCodecs(sdp, allowedCodecs)
       .replace('useinbandfec=1', 'useinbandfec=1;stereo=1;maxaveragebitrate=128000')
       .replace(/a=extmap:\d+ urn:ietf:params:rtp-hdrext:ssrc-audio-level\r\n/g, '')
       .replace(/a=extmap:\d+ urn:ietf:params:rtp-hdrext:sdes:mid\r\n/g, '')
       .replace(/a=extmap:\d+ urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id\r\n/g, '')
       .replace(/a=extmap:\d+ urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id\r\n/g, '')
-      .replace(/a=extmap:\d+ urn:ietf:params:rtp-hdrext:toffset\r\n/g, '');
+      .replace(/a=extmap:\d+ urn:ietf:params:rtp-hdrext:toffset\r\n/g, '')
+      .replace(/a=extmap:\d+ urn:3gpp:video-orientation\r\n/g, '');
+  }
+
+  private async fetchGatewayCodec() {
+    const url = `${this.webrtcApiBase}/api/getParams?sessionId=${encodeURIComponent(this.sessionId)}`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) return '';
+      const payload = (await response.json()) as { codec?: unknown };
+      return typeof payload.codec === 'string' ? payload.codec : '';
+    } catch {
+      return '';
+    }
+  }
+
+  private sendGatewayStatus() {
+    const maxFramerate = 60;
+    this.log('Sending stream status response');
+    this.sendEvent({ type: 'keyboard', action: 'language', code: 1033 });
+    this.sendEvent({
+      type: 'stream',
+      action: 'status',
+      value: 'ok',
+      params: {
+        type: 'web',
+        ver: 'openstroid',
+        gpu: 'unknown',
+        proto: 1,
+        framerate_max: maxFramerate,
+        bitrate_max: 20_000_000,
+        hdr: false,
+        cursor_zip: 'CompressionStream' in window,
+        filler: false,
+        beta: 0,
+        rtcEngine: 'webrtc',
+        rtcAudio: 'pcm',
+        network_type: connectionType(),
+      },
+    });
+    this.sendEvent({ type: 'stream', action: 'refreshRate', value: maxFramerate });
   }
 
   private async fetchIceServers() {
