@@ -75,6 +75,26 @@ export interface CaptureArtifact {
   bridgeSession: BridgeSession | null;
   ingestSource?: 'browser' | 'extension';
   extensionMetadata?: Record<string, unknown>;
+  diagnostics?: CaptureDiagnostics;
+}
+
+export interface CaptureDiagnostics {
+  tokenSource?: 'payload' | 'storage' | 'cookie' | 'none';
+  hasAccessToken?: boolean;
+  hasRefreshToken?: boolean;
+  authCookieNames?: string[];
+  storageKeys?: string[];
+  relevantResponseSummary?: Array<{
+    type: CaptureEvent['type'];
+    method?: string;
+    url?: string;
+    status?: number;
+    payloadKeys?: string[];
+  }>;
+  upstreamValidation?: {
+    status?: number;
+    message: string;
+  };
 }
 
 export interface CaptureStartResult {
@@ -140,7 +160,11 @@ function isTerminalStatus(status: CaptureStatus): boolean {
 }
 
 function isRelevantUrl(url: string): boolean {
-  return RELEVANT_PATH_PATTERNS.some((pattern) => url.includes(pattern));
+  return RELEVANT_PATH_PATTERNS.some((pattern) => url.includes(pattern)) ||
+    (url.includes('/api/') && url.includes('boosteroid')) ||
+    url.includes('/graphql') ||
+    url.includes('/sanctum') ||
+    url.includes('/oauth');
 }
 
 function toIso(ms: number | null): string | null {
@@ -207,11 +231,51 @@ function extractTokensFromCookies(cookies: StoredCookie[]): { accessToken: strin
 
 function extractTokensFromPayload(payload: unknown): { accessToken: string | null; refreshToken: string | null; userData?: unknown } {
   const envelope = unwrapRecord(payload);
+  const recursiveTokens = extractTokensFromRecord(envelope);
   return {
-    accessToken: typeof envelope.access_token === 'string' && envelope.access_token ? envelope.access_token : null,
-    refreshToken: typeof envelope.refresh_token === 'string' && envelope.refresh_token ? envelope.refresh_token : null,
+    accessToken: recursiveTokens.accessToken,
+    refreshToken: recursiveTokens.refreshToken,
     userData: envelope.user_data,
   };
+}
+
+function extractTokensFromRecord(value: unknown, pathParts: string[] = []): { accessToken: string | null; refreshToken: string | null } {
+  if (!value || typeof value !== 'object' || pathParts.length > 5) {
+    return { accessToken: null, refreshToken: null };
+  }
+
+  let accessToken: string | null = null;
+  let refreshToken: string | null = null;
+
+  for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+    const normalizedKey = key.toLowerCase();
+    if (typeof nestedValue === 'string' && nestedValue) {
+      if (!accessToken && (
+        normalizedKey === 'access_token' ||
+        normalizedKey === 'accesstoken' ||
+        normalizedKey === 'authorization' ||
+        (normalizedKey.includes('access') && normalizedKey.includes('token'))
+      )) {
+        accessToken = nestedValue;
+      }
+
+      if (!refreshToken && (
+        normalizedKey === 'refresh_token' ||
+        normalizedKey === 'refreshtoken' ||
+        (normalizedKey.includes('refresh') && normalizedKey.includes('token'))
+      )) {
+        refreshToken = nestedValue;
+      }
+    }
+
+    if ((!accessToken || !refreshToken) && nestedValue && typeof nestedValue === 'object') {
+      const nestedTokens = extractTokensFromRecord(nestedValue, [...pathParts, key]);
+      accessToken ??= nestedTokens.accessToken;
+      refreshToken ??= nestedTokens.refreshToken;
+    }
+  }
+
+  return { accessToken, refreshToken };
 }
 
 function extractTokensFromEvents(events: CaptureEvent[]): { accessToken: string | null; refreshToken: string | null; userData?: unknown } {
@@ -297,6 +361,39 @@ function extractTokensFromStorage(storageItems: ExtensionStorageItem[]): { acces
   }
 
   return { accessToken, refreshToken };
+}
+
+function payloadKeys(payload: unknown): string[] {
+  const envelope = unwrapRecord(payload);
+  return Object.keys(envelope).slice(0, 20);
+}
+
+function createDiagnostics(
+  observedResponses: CaptureEvent[],
+  allCookies: StoredCookie[],
+  storageItems: ExtensionStorageItem[],
+  tokenSource: CaptureDiagnostics['tokenSource'],
+  accessToken: string | null,
+  refreshToken: string | null,
+  upstreamValidation?: CaptureDiagnostics['upstreamValidation'],
+): CaptureDiagnostics {
+  return {
+    tokenSource,
+    hasAccessToken: Boolean(accessToken),
+    hasRefreshToken: Boolean(refreshToken),
+    authCookieNames: allCookies
+      .filter((cookie) => AUTH_COOKIE_NAMES.includes(cookie.name as (typeof AUTH_COOKIE_NAMES)[number]))
+      .map((cookie) => `${cookie.domain}:${cookie.name}`),
+    storageKeys: storageItems.map((item) => `${item.area}:${item.key}`).slice(0, 25),
+    relevantResponseSummary: observedResponses.slice(-25).map((event) => ({
+      type: event.type,
+      method: event.method,
+      url: event.url,
+      status: event.status,
+      payloadKeys: event.payload ? payloadKeys(event.payload) : undefined,
+    })),
+    upstreamValidation,
+  };
 }
 
 async function ensureArtifactDir(): Promise<void> {
@@ -510,9 +607,18 @@ class AuthCaptureManager {
     const storageTokens = extractTokensFromStorage(storageItems);
     const accessToken = payloadTokens.accessToken ?? storageTokens.accessToken ?? cookieTokens.accessToken;
     const refreshToken = payloadTokens.refreshToken ?? storageTokens.refreshToken ?? cookieTokens.refreshToken;
+    const tokenSource: CaptureDiagnostics['tokenSource'] =
+      payloadTokens.accessToken || payloadTokens.refreshToken
+        ? 'payload'
+        : storageTokens.accessToken || storageTokens.refreshToken
+          ? 'storage'
+          : cookieTokens.accessToken || cookieTokens.refreshToken
+            ? 'cookie'
+            : 'none';
 
     if (!accessToken || !refreshToken) {
       const artifact = this.buildSubmittedArtifact(capture, submission, allCookies, observedResponses);
+      artifact.diagnostics = createDiagnostics(observedResponses, allCookies, storageItems, tokenSource, accessToken, refreshToken);
       this.keepExtensionCaptureWaiting(capture, 'Extension capture did not include usable upstream access and refresh tokens.', artifact);
       return capture.artifact ?? artifact;
     }
@@ -545,6 +651,12 @@ class AuthCaptureManager {
     } catch (error) {
       const artifact = this.buildSubmittedArtifact(capture, submission, allCookies, observedResponses);
       const message = error instanceof Error ? `Extension capture token validation failed: ${error.message}` : 'Extension capture token validation failed.';
+      artifact.diagnostics = createDiagnostics(observedResponses, allCookies, storageItems, tokenSource, accessToken, refreshToken, {
+        status: error && typeof error === 'object' && 'response' in error
+          ? (error as { response?: { status?: number } }).response?.status
+          : undefined,
+        message,
+      });
       this.keepExtensionCaptureWaiting(capture, message, artifact);
       return capture.artifact ?? artifact;
     }

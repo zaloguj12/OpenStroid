@@ -1,10 +1,4 @@
 (function bootstrapOpenStroidCapture() {
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('page-hook.js');
-  script.async = false;
-  (document.head || document.documentElement).appendChild(script);
-  script.remove();
-
   function notifyPageVisit() {
     chrome.runtime.sendMessage({
       type: 'openstroid:page-visit',

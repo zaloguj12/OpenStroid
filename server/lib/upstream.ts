@@ -20,6 +20,27 @@ export interface UpstreamTokens {
 
 const refreshRequests = new Map<string, Promise<UpstreamTokens>>();
 
+function normalizeAuthorizationValue(accessToken: string): string {
+  const plusAsSpace = accessToken.replace(/\+/g, ' ');
+  let decoded = plusAsSpace;
+  try {
+    decoded = decodeURIComponent(plusAsSpace);
+  } catch {
+    decoded = plusAsSpace;
+  }
+
+  const trimmed = decoded.trim();
+  if (/^Bearer\s+/i.test(trimmed)) {
+    return trimmed.replace(/^Bearer\s+/i, 'Bearer ');
+  }
+
+  if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(trimmed)) {
+    return `Bearer ${trimmed}`;
+  }
+
+  return trimmed;
+}
+
 export function unwrapRecord(data: unknown): Record<string, unknown> {
   if (data && typeof data === 'object' && 'data' in data && data.data && typeof data.data === 'object') {
     return data.data as Record<string, unknown>;
@@ -76,7 +97,7 @@ export async function loginUpstream(payload: Record<string, string | boolean>): 
 
 export async function getUpstreamUser(accessToken: string): Promise<Record<string, unknown>> {
   const { data } = await upstreamClient.get('/api/v1/user', {
-    headers: { Authorization: accessToken },
+    headers: { Authorization: normalizeAuthorizationValue(accessToken) },
   });
 
   return unwrapRecord(data);
@@ -84,7 +105,7 @@ export async function getUpstreamUser(accessToken: string): Promise<Record<strin
 
 export async function getInstalledGamesUpstream(accessToken: string): Promise<unknown[]> {
   const { data } = await upstreamClient.get('/api/v1/boostore/applications/installed', {
-    headers: { Authorization: accessToken },
+    headers: { Authorization: normalizeAuthorizationValue(accessToken) },
   });
 
   if (Array.isArray(data)) return data;
@@ -103,7 +124,7 @@ export async function logoutUpstream(accessToken: string): Promise<void> {
     '/api/v2/auth/logout',
     {},
     {
-      headers: { Authorization: accessToken },
+      headers: { Authorization: normalizeAuthorizationValue(accessToken) },
     },
   );
 }

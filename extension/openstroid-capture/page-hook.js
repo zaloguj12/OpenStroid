@@ -1,4 +1,9 @@
 (() => {
+  if (window.__OPENSTROID_CAPTURE_HOOKED__) {
+    return;
+  }
+  window.__OPENSTROID_CAPTURE_HOOKED__ = true;
+
   const RELEVANT_PATH_PATTERNS = [
     '/api/v1/auth/login',
     '/api/v1/auth/refresh-token',
@@ -11,7 +16,12 @@
   ];
 
   function isRelevantUrl(url) {
-    return RELEVANT_PATH_PATTERNS.some((pattern) => url.includes(pattern));
+    const value = String(url);
+    return RELEVANT_PATH_PATTERNS.some((pattern) => value.includes(pattern)) ||
+      (value.includes('/api/') && value.includes('boosteroid')) ||
+      value.includes('/graphql') ||
+      value.includes('/sanctum') ||
+      value.includes('/oauth');
   }
 
   function dispatchNetworkEvent(event) {

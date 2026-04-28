@@ -97,6 +97,7 @@ export function createBridgeApp() {
       eventCount: capture.eventCount,
       user: capture.userPayload,
       captureMethod: capture.captureMethod,
+      diagnostics: capture.diagnostics,
       sessionEstablished,
     });
   }

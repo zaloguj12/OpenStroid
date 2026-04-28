@@ -24,6 +24,15 @@
         "https://boosteroid.com/*",
         "https://*.boosteroid.com/*"
       ],
+      "js": ["page-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://boosteroid.com/*",
+        "https://*.boosteroid.com/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_start"
     }

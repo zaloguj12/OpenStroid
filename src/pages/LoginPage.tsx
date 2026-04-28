@@ -310,6 +310,9 @@ export function LoginPage() {
                       {capture.errors.length > 0 && (
                         <Text size="xs" c="yellow.3">{capture.errors[capture.errors.length - 1]}</Text>
                       )}
+                      {capture.diagnostics && (
+                        <Code block>{JSON.stringify(capture.diagnostics, null, 2)}</Code>
+                      )}
                     </>
                   )}
                   {capture && !TERMINAL_STATUSES.has(capture.status) && (

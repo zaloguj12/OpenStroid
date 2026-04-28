@@ -22,7 +22,12 @@ let lastActiveLookup = null;
 let lastSubmissionResult = null;
 
 function isRelevantUrl(url) {
-  return RELEVANT_PATH_PATTERNS.some((pattern) => url.includes(pattern));
+  const value = String(url);
+  return RELEVANT_PATH_PATTERNS.some((pattern) => value.includes(pattern)) ||
+    (value.includes('/api/') && value.includes('boosteroid')) ||
+    value.includes('/graphql') ||
+    value.includes('/sanctum') ||
+    value.includes('/oauth');
 }
 
 function pushObservedEvent(event) {
@@ -298,6 +303,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         lastSubmittedCaptureId,
         lastActiveLookup,
         lastSubmissionResult,
+        recentEvents: observedResponses.slice(-12).map((event) => ({
+          type: event.type,
+          method: event.method,
+          url: event.url,
+          status: event.status,
+          payloadKeys: event.payload && typeof event.payload === 'object'
+            ? Object.keys(event.payload.data && typeof event.payload.data === 'object' ? event.payload.data : event.payload).slice(0, 12)
+            : undefined,
+          message: event.message,
+        })),
       });
     });
     return true;

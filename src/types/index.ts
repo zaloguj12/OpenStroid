@@ -43,7 +43,27 @@ export interface LoginCaptureSessionStatus {
   eventCount: number;
   user: User | null;
   captureMethod: LoginCaptureMethod;
+  diagnostics?: CaptureDiagnostics;
   sessionEstablished: boolean;
+}
+
+export interface CaptureDiagnostics {
+  tokenSource?: 'payload' | 'storage' | 'cookie' | 'none';
+  hasAccessToken?: boolean;
+  hasRefreshToken?: boolean;
+  authCookieNames?: string[];
+  storageKeys?: string[];
+  relevantResponseSummary?: Array<{
+    type: CaptureEvent['type'];
+    method?: string;
+    url?: string;
+    status?: number;
+    payloadKeys?: string[];
+  }>;
+  upstreamValidation?: {
+    status?: number;
+    message: string;
+  };
 }
 
 export interface CaptureEvent {
@@ -97,6 +117,7 @@ export interface CaptureArtifact {
   } | null;
   ingestSource?: 'browser' | 'extension';
   extensionMetadata?: Record<string, unknown>;
+  diagnostics?: CaptureDiagnostics;
 }
 
 export interface AuthCaptureDebugResponse {
