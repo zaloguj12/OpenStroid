@@ -271,7 +271,7 @@ export function StreamPage() {
   const handleStop = useCallback(async () => {
     await clientRef.current?.disconnect();
     await dequeueStreamSession().catch(() => undefined);
-    navigate('/library');
+    navigate('/my-games');
   }, [navigate]);
 
   return (

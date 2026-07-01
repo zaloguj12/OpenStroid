@@ -8,7 +8,8 @@ import { AuthProvider } from './auth';
 import { RequireAuth } from './components/RequireAuth';
 import { AuthenticatedLayout } from './layouts/AuthenticatedLayout';
 import { LoginPage } from './pages/LoginPage';
-import { LibraryPage } from './pages/LibraryPage';
+import { MyGamesPage } from './pages/LibraryPage';
+import { LibraryCatalogPage } from './pages/LibraryCatalogPage';
 import { InstallPage } from './pages/InstallPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StreamPage } from './pages/StreamPage';
@@ -29,11 +30,12 @@ export default function App() {
                 </RequireAuth>
               }
             >
-              <Route path="/library" element={<LibraryPage />} />
+              <Route path="/my-games" element={<MyGamesPage />} />
+              <Route path="/library" element={<LibraryCatalogPage />} />
               <Route path="/install" element={<InstallPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
-            <Route path="*" element={<Navigate to="/library" replace />} />
+            <Route path="*" element={<Navigate to="/my-games" replace />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>

@@ -71,7 +71,7 @@ export function LoginPage() {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const pollHandle = useRef<number | null>(null);
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/library';
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/my-games';
 
   const stopPolling = useCallback(() => {
     if (pollHandle.current !== null) {

@@ -14,7 +14,6 @@ import {
   Image,
   Menu,
   Overlay,
-  ScrollArea,
   SegmentedControl,
   Select,
   SimpleGrid,
@@ -206,7 +205,7 @@ function sortGames(games: InstalledGame[], sort: SortKey): InstalledGame[] {
   });
 }
 
-export function LibraryPage() {
+export function MyGamesPage() {
   const [dashboard, setDashboard] = useState<LibraryDashboard>(EMPTY_DASHBOARD);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [errorMsg, setErrorMsg] = useState('');
@@ -247,26 +246,10 @@ export function LibraryPage() {
     () => uniqueGames((dashboard.installedGames ?? []).map(coerceGame)),
     [dashboard.installedGames],
   );
-  const catalogGames = useMemo(
-    () => uniqueGames((dashboard.catalogGames ?? []).map(coerceGame)),
-    [dashboard.catalogGames],
-  );
-  const newGames = useMemo(
-    () => uniqueGames((dashboard.newGames ?? []).map(coerceGame)),
-    [dashboard.newGames],
-  );
-  const carouselGames = useMemo(
-    () => uniqueGames((dashboard.carousel ?? []).map(coerceGame)),
-    [dashboard.carousel],
-  );
   const installedIds = useMemo(() => new Set(installedGames.map((game) => game.id)), [installedGames]);
-  const allGames = useMemo(
-    () => uniqueGames([...installedGames, ...newGames, ...catalogGames, ...carouselGames]),
-    [catalogGames, carouselGames, installedGames, newGames],
-  );
 
   const visibleGames = useMemo(() => {
-    const source = filter === 'installed' ? installedGames : allGames;
+    const source = installedGames;
     const filtered = source.filter((game) => {
       if (!matchesSearch(game, query)) return false;
       if (filter === 'controller') return isControllerFriendly(game);
@@ -274,11 +257,11 @@ export function LibraryPage() {
       return true;
     });
     return sortGames(filtered, filter === 'recent' ? 'recent' : sort);
-  }, [allGames, filter, installedGames, query, sort]);
+  }, [filter, installedGames, query, sort]);
 
   const featuredGame = useMemo(
-    () => carouselGames.find((game) => imageUrl(game)) ?? installedGames[0] ?? newGames[0] ?? allGames[0] ?? null,
-    [allGames, carouselGames, installedGames, newGames],
+    () => installedGames.find((game) => imageUrl(game)) ?? installedGames[0] ?? null,
+    [installedGames],
   );
 
   const handleLaunch = useCallback(async (game: InstalledGame) => {
@@ -340,9 +323,9 @@ export function LibraryPage() {
     <Box maw={1440} mx="auto">
       <Group justify="space-between" align="flex-start" mb="lg">
         <Stack gap={4}>
-          <Title order={2} fw={800}>Library</Title>
+          <Title order={2} fw={800}>My Games</Title>
           <Text c="dimmed" size="sm">
-            {installedGames.length} installed. Use Install to search the full Boosteroid catalog.
+            {installedGames.length} games from your Boosteroid installed list.
           </Text>
         </Stack>
         <Group gap="xs">
@@ -453,8 +436,7 @@ export function LibraryPage() {
               value={filter}
               onChange={(value) => setFilter(value as FilterKey)}
               data={[
-                { value: 'installed', label: 'Installed' },
-                { value: 'all', label: 'All' },
+                { value: 'installed', label: 'All' },
                 { value: 'recent', label: 'Recent' },
                 { value: 'controller', label: 'Controller' },
                 { value: 'free', label: 'Free' },
@@ -477,17 +459,6 @@ export function LibraryPage() {
                 />
               ))}
             </SimpleGrid>
-          )}
-
-          {newGames.length > 0 && (
-            <GameRail
-              title="New on Boosteroid"
-              games={newGames.slice(0, 14)}
-              installedIds={installedIds}
-              launchingGameId={launchingGameId}
-              onLaunch={handleLaunch}
-              onDetails={openDetails}
-            />
           )}
 
           <DashboardFacts dashboard={dashboard} installedCount={installedGames.length} />
@@ -622,46 +593,6 @@ function GameCard({
         </Stack>
       </Box>
     </Card>
-  );
-}
-
-function GameRail({
-  title,
-  games,
-  installedIds,
-  launchingGameId,
-  onLaunch,
-  onDetails,
-}: {
-  title: string;
-  games: InstalledGame[];
-  installedIds: Set<number>;
-  launchingGameId: number | null;
-  onLaunch: (game: InstalledGame) => void;
-  onDetails: (game: InstalledGame) => void;
-}) {
-  return (
-    <Stack gap="sm">
-      <Group gap="xs">
-        <IconSparkles size={18} color="var(--mantine-color-yellow-5)" />
-        <Title order={3} fw={700}>{title}</Title>
-      </Group>
-      <ScrollArea type="hover" offsetScrollbars>
-        <Group gap="md" wrap="nowrap" pb="xs">
-          {games.map((game) => (
-            <Box key={game.id} w={176} style={{ flex: '0 0 176px' }}>
-              <GameCard
-                game={game}
-                installed={installedIds.has(game.id)}
-                isLaunching={launchingGameId === game.id}
-                onLaunch={onLaunch}
-                onDetails={onDetails}
-              />
-            </Box>
-          ))}
-        </Group>
-      </ScrollArea>
-    </Stack>
   );
 }
 

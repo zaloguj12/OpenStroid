@@ -35,6 +35,7 @@ import {
   getCatalogGames,
   getGameDetails,
   getInstalledGames,
+  getLibraryFacets,
   installGame,
   launchStream,
   searchCatalogGames,
@@ -58,15 +59,47 @@ type FilterKey = 'all' | 'not-installed' | 'installed' | 'controller' | 'free';
 
 const PAGE_SIZE = 50;
 
+interface InstallPageProps {
+  collectionName?: string;
+  title?: string;
+  description?: string;
+  emptyTitle?: string;
+}
+
 function errorMessage(err: unknown, fallback: string): string {
   return (err as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
 }
 
-export function InstallPage() {
+function facetName(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const record = value as Record<string, unknown>;
+  for (const key of ['name', 'title', 'collectionName', 'slug']) {
+    const item = record[key];
+    if (typeof item === 'string' && item.trim()) return item.trim();
+  }
+  return '';
+}
+
+function facetId(value: unknown): string | number | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const id = record.id ?? record.collectionId ?? record.value;
+  if (typeof id === 'string' || typeof id === 'number') return id;
+  return null;
+}
+
+export function InstallPage({
+  collectionName = 'Install',
+  title = 'Install Games',
+  description = 'Search the Boosteroid install collection and add games to your OpenStroid library.',
+  emptyTitle = 'No install games found',
+}: InstallPageProps = {}) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [games, setGames] = useState<InstalledGame[]>([]);
   const [installedIds, setInstalledIds] = useState<Set<number>>(new Set());
+  const [collectionId, setCollectionId] = useState<string | number | null>(null);
+  const [collectionReady, setCollectionReady] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [error, setError] = useState('');
   const [actionGameId, setActionGameId] = useState<number | null>(null);
@@ -81,13 +114,30 @@ export function InstallPage() {
     setInstalledIds(new Set(installed.map((game) => game.id)));
   }, []);
 
+  const resolveCollection = useCallback(async () => {
+    setCollectionReady(false);
+    try {
+      const facets = await getLibraryFacets();
+      const normalizedTarget = collectionName.trim().toLowerCase();
+      const matched = facets.collections.find((collection) => facetName(collection).toLowerCase() === normalizedTarget);
+      setCollectionId(facetId(matched) ?? null);
+    } catch {
+      setCollectionId(null);
+    } finally {
+      setCollectionReady(true);
+    }
+  }, [collectionName]);
+
   const loadGames = useCallback(async (searchText: string) => {
+    if (!collectionReady) return;
     setLoadState('loading');
     setError('');
     try {
+      const catalogParams: Record<string, unknown> = { page: 1, paginate: PAGE_SIZE };
+      if (collectionId !== null) catalogParams.collection = collectionId;
       const rawGames = searchText.trim()
         ? await searchCatalogGames({ name: searchText.trim() })
-        : await getCatalogGames({ page: 1, paginate: PAGE_SIZE });
+        : await getCatalogGames(catalogParams);
       setGames(uniqueGames(rawGames.map(coerceGame)));
       await refreshInstalled();
       setLoadState('success');
@@ -95,7 +145,14 @@ export function InstallPage() {
       setError(errorMessage(err, 'Could not load Boosteroid catalog games.'));
       setLoadState('error');
     }
-  }, [refreshInstalled]);
+  }, [collectionId, collectionReady, refreshInstalled]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void resolveCollection();
+    }, 0);
+    return () => window.clearTimeout(handle);
+  }, [resolveCollection]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedQuery(query), 350);
@@ -103,8 +160,8 @@ export function InstallPage() {
   }, [query]);
 
   useEffect(() => {
-    void loadGames(debouncedQuery);
-  }, [debouncedQuery, loadGames]);
+    if (collectionReady) void loadGames(debouncedQuery);
+  }, [collectionReady, debouncedQuery, loadGames]);
 
   const visibleGames = useMemo(() => {
     const filtered = games.filter((game) => {
@@ -186,9 +243,9 @@ export function InstallPage() {
     <Box maw={1440} mx="auto">
       <Group justify="space-between" align="flex-start" mb="lg">
         <Stack gap={4}>
-          <Title order={2} fw={800}>Install Games</Title>
+          <Title order={2} fw={800}>{title}</Title>
           <Text c="dimmed" size="sm">
-            Search the Boosteroid catalog and add games to your OpenStroid library.
+            {description}
           </Text>
         </Stack>
         <Tooltip label="Refresh catalog">
@@ -253,7 +310,7 @@ export function InstallPage() {
         {loadState === 'loading' ? (
           <CatalogSkeleton />
         ) : visibleGames.length === 0 ? (
-          <EmptyCatalog hasQuery={Boolean(query.trim())} onReset={() => setQuery('')} />
+          <EmptyCatalog title={emptyTitle} hasQuery={Boolean(query.trim())} onReset={() => setQuery('')} />
         ) : (
           <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing="md">
             {visibleGames.map((game) => (
@@ -460,7 +517,7 @@ function CatalogSkeleton() {
   );
 }
 
-function EmptyCatalog({ hasQuery, onReset }: { hasQuery: boolean; onReset: () => void }) {
+function EmptyCatalog({ title, hasQuery, onReset }: { title: string; hasQuery: boolean; onReset: () => void }) {
   return (
     <Center py={72}>
       <Stack align="center" gap="md" maw={420}>
@@ -468,7 +525,7 @@ function EmptyCatalog({ hasQuery, onReset }: { hasQuery: boolean; onReset: () =>
           <IconSearch size={36} />
         </ThemeIcon>
         <Stack gap={4} align="center">
-          <Title order={3} fw={700} ta="center">No catalog games found</Title>
+          <Title order={3} fw={700} ta="center">{title}</Title>
           <Text c="dimmed" size="sm" ta="center">
             {hasQuery ? 'Try another game name or clear search to load the default catalog.' : 'Refresh the catalog after your Boosteroid session is active.'}
           </Text>

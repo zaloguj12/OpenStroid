@@ -1,6 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { AppShell, Box, Button, Divider, Group, NavLink, Stack, Text, ThemeIcon } from '@mantine/core';
-import { IconBrandSteam, IconCloudDownload, IconDeviceGamepad2, IconExternalLink, IconHome, IconServerBolt, IconSettings } from '@tabler/icons-react';
+import { IconBooks, IconBrandSteam, IconCloudDownload, IconDeviceGamepad2, IconExternalLink, IconHome, IconServerBolt, IconSettings } from '@tabler/icons-react';
 import { NavLink as RouterNavLink } from 'react-router-dom';
 import { AppHeader } from '../components/AppHeader';
 
@@ -54,9 +54,22 @@ export function AuthenticatedLayout() {
             <Stack gap={4}>
               <NavLink
                 component={RouterNavLink}
+                to="/my-games"
+                label="My Games"
+                leftSection={<IconHome size={18} />}
+                active={location.pathname.startsWith('/my-games')}
+                variant="filled"
+                color="cyan"
+                styles={{
+                  root: { borderRadius: 8 },
+                  label: { fontWeight: 700 },
+                }}
+              />
+              <NavLink
+                component={RouterNavLink}
                 to="/library"
                 label="Library"
-                leftSection={<IconHome size={18} />}
+                leftSection={<IconBooks size={18} />}
                 active={location.pathname.startsWith('/library')}
                 variant="filled"
                 color="cyan"

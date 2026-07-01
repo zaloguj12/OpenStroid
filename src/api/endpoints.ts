@@ -4,6 +4,7 @@ import type {
   AuthCaptureDebugResponse,
   AuthSession,
   InstalledGame,
+  LibraryFacet,
   LibraryDashboard,
   LoginCaptureMethod,
   LoginCaptureSessionStatus,
@@ -64,6 +65,17 @@ export async function getInstalledGames(): Promise<InstalledGame[]> {
 export async function getLibraryDashboard(): Promise<LibraryDashboard> {
   const { data } = await apiClient.get(API_CONFIG.endpoints.libraryDashboard);
   return data as LibraryDashboard;
+}
+
+export async function getLibraryFacets(): Promise<LibraryDashboard['facets']> {
+  const { data } = await apiClient.get(API_CONFIG.endpoints.libraryFacets);
+  return {
+    collections: Array.isArray(data?.collections) ? data.collections as LibraryFacet[] : [],
+    genres: Array.isArray(data?.genres) ? data.genres as LibraryFacet[] : [],
+    platforms: Array.isArray(data?.platforms) ? data.platforms as LibraryFacet[] : [],
+    orderBy: Array.isArray(data?.orderBy) ? data.orderBy as LibraryFacet[] : [],
+    languages: Array.isArray(data?.languages) ? data.languages as LibraryFacet[] : [],
+  };
 }
 
 export async function getCatalogGames(params: Record<string, unknown> = {}): Promise<InstalledGame[]> {

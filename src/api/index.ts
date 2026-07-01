@@ -10,6 +10,7 @@ export {
   getCurrentUser,
   getInstalledGames,
   getLibraryDashboard,
+  getLibraryFacets,
   getCatalogGames,
   searchCatalogGames,
   getNewGames,
