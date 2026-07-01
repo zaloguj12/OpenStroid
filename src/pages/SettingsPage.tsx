@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import {
   Alert,
   Badge,
   Box,
   Button,
   Code,
-  Divider,
   Group,
   Paper,
   SegmentedControl,
@@ -15,8 +14,8 @@ import {
   Switch,
   Text,
   TextInput,
-  ThemeIcon,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
 import {
   IconAlertCircle,
@@ -26,6 +25,7 @@ import {
   IconLogout,
   IconPlugConnected,
   IconRefresh,
+  IconSearch,
   IconSettings,
   IconUser,
 } from '@tabler/icons-react';
@@ -43,6 +43,19 @@ import type { StreamQualityPreset } from '../stream/OpenStroidStreamClient';
 
 const EXTENSION_PATH = 'C:\\Users\\Zortos\\Projects\\OpenStroid\\extension\\openstroid-capture';
 
+type SettingsSectionId = 'account' | 'bridge' | 'stream' | 'diagnostics';
+
+const SETTINGS_NAV: Array<{
+  id: SettingsSectionId;
+  label: string;
+  icon: ComponentType<{ size?: number; stroke?: number }>;
+}> = [
+  { id: 'stream', label: 'Stream', icon: IconDeviceGamepad2 },
+  { id: 'account', label: 'Account', icon: IconUser },
+  { id: 'bridge', label: 'Bridge', icon: IconPlugConnected },
+  { id: 'diagnostics', label: 'Diagnostics', icon: IconAlertCircle },
+];
+
 function updateStreamSettings(settings: AppSettings, patch: Partial<StreamDefaults>): AppSettings {
   return {
     ...settings,
@@ -59,6 +72,7 @@ export function SettingsPage() {
   const [status, setStatus] = useState('');
   const [statusTone, setStatusTone] = useState<'teal' | 'red' | 'blue'>('blue');
   const [bridgeStatus, setBridgeStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('stream');
 
   const checkBridge = useCallback(async () => {
     setBridgeStatus('checking');
@@ -106,18 +120,23 @@ export function SettingsPage() {
     }
   }, []);
 
+  const navigateSettings = useCallback((section: SettingsSectionId) => {
+    setActiveSection(section);
+    document.getElementById(`settings-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   return (
-    <Box maw={1180} mx="auto">
-      <Group justify="space-between" align="flex-start" mb="lg">
-        <Stack gap={4}>
-          <Title order={2} fw={800}>Settings</Title>
+    <Box maw={1400} mx="auto">
+      <Group className="openstroid-page-head" justify="space-between" align="flex-start" gap="md">
+        <Stack gap={3}>
+          <Title order={2} fw={600}>Settings</Title>
           <Text c="dimmed" size="sm">Account, extension, bridge, and stream defaults.</Text>
         </Stack>
         <Group gap="xs">
           <Button variant="light" color="gray" leftSection={<IconRefresh size={16} />} onClick={() => void checkBridge()}>
             Check bridge
           </Button>
-          <Button color="teal" leftSection={<IconCheck size={16} />} onClick={save}>
+          <Button color="brand" leftSection={<IconCheck size={16} />} onClick={save}>
             Save
           </Button>
         </Group>
@@ -129,159 +148,170 @@ export function SettingsPage() {
         </Alert>
       )}
 
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-        <Paper p="lg" radius="md" style={{ background: '#10141b', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <Stack gap="md">
-            <Group justify="space-between">
-              <Group gap="sm">
-                <ThemeIcon color="cyan" variant="light" radius={8}>
-                  <IconUser size={18} />
-                </ThemeIcon>
-                <Title order={3} fw={700}>Account</Title>
-              </Group>
-              <Badge color={user ? 'teal' : 'red'} variant="light">{user ? 'Signed in' : 'Offline'}</Badge>
-            </Group>
-            <Stack gap={2}>
-              <Text size="sm" fw={700}>{user?.name || user?.email || 'OpenStroid user'}</Text>
-              <Text size="sm" c="dimmed">{user?.email ?? 'No email in local session.'}</Text>
-            </Stack>
-            <Group>
-              <Button variant="light" color="gray" loading={isLoading} leftSection={<IconRefresh size={16} />} onClick={() => void refreshSession()}>
-                Refresh session
-              </Button>
-              <Button variant="light" color="red" leftSection={<IconLogout size={16} />} onClick={() => void logout()}>
-                Sign out
-              </Button>
-            </Group>
-          </Stack>
-        </Paper>
+      <Paper className="openstroid-settings-shell" p={0}>
+        <aside className="openstroid-settings-rail" aria-label="Settings sections">
+          <TextInput
+            aria-label="Search settings"
+            placeholder="Search settings..."
+            leftSection={<IconSearch size={16} />}
+          />
+          <nav className="openstroid-settings-nav">
+            {SETTINGS_NAV.map((item) => {
+              const Icon = item.icon;
+              return (
+                <UnstyledButton
+                  key={item.id}
+                  className="openstroid-settings-nav-item"
+                  data-active={activeSection === item.id}
+                  onClick={() => navigateSettings(item.id)}
+                >
+                  <Icon size={16} stroke={2} />
+                  <span>{item.label}</span>
+                </UnstyledButton>
+              );
+            })}
+          </nav>
+        </aside>
 
-        <Paper p="lg" radius="md" style={{ background: '#10141b', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <Stack gap="md">
-            <Group justify="space-between">
-              <Group gap="sm">
-                <ThemeIcon color={bridgeStatus === 'online' ? 'teal' : bridgeStatus === 'offline' ? 'red' : 'blue'} variant="light" radius={8}>
-                  <IconPlugConnected size={18} />
-                </ThemeIcon>
-                <Title order={3} fw={700}>Bridge</Title>
-              </Group>
-              <Badge color={bridgeStatus === 'online' ? 'teal' : bridgeStatus === 'offline' ? 'red' : 'blue'} variant="light">
-                {bridgeStatus}
-              </Badge>
+        <Stack className="openstroid-settings-content" gap="md">
+          <SettingSection id="stream" title="Stream Defaults">
+            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
+              <Stack gap="xs">
+                <Text size="sm" fw={700}>Quality preset</Text>
+                <SegmentedControl
+                  value={settings.stream.quality}
+                  onChange={(value) => updateStream({ quality: value as StreamQualityPreset })}
+                  data={[
+                    { value: 'auto', label: 'Auto' },
+                    { value: 'high', label: 'High' },
+                    { value: 'balanced', label: 'Balanced' },
+                    { value: 'dataSaver', label: 'Low' },
+                  ]}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="sm" fw={700}>Frame rate</Text>
+                  <Text size="sm" c="dimmed">{settings.stream.maxFps} FPS</Text>
+                </Group>
+                <SegmentedControl
+                  value={String(settings.stream.maxFps)}
+                  onChange={(value) => updateStream({ maxFps: Number(value) >= 120 ? 120 : 60 })}
+                  data={[
+                    { value: '60', label: '60 FPS' },
+                    { value: '120', label: '120 FPS' },
+                  ]}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="sm" fw={700}>Max bitrate</Text>
+                  <Text size="sm" c="dimmed">{settings.stream.maxBitrate} Mbps</Text>
+                </Group>
+                <Slider
+                  min={3}
+                  max={40}
+                  step={1}
+                  value={settings.stream.maxBitrate}
+                  onChange={(value) => updateStream({ maxBitrate: value })}
+                  marks={[{ value: 7, label: '7' }, { value: 20, label: '20' }, { value: 40, label: '40' }]}
+                />
+              </Stack>
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="sm" fw={700}>Volume</Text>
+                  <Text size="sm" c="dimmed">{settings.stream.muted ? 'Muted' : `${settings.stream.volume}%`}</Text>
+                </Group>
+                <Slider
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={settings.stream.volume}
+                  onChange={(value) => updateStream({ volume: value, muted: value === 0 ? true : settings.stream.muted })}
+                />
+              </Stack>
+            </SimpleGrid>
+
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md" mt="lg">
+              <Switch checked={settings.stream.muted} onChange={(event) => updateStream({ muted: event.currentTarget.checked })} label="Mute audio" />
+              <Switch checked={settings.stream.fsrEnabled} onChange={(event) => updateStream({ fsrEnabled: event.currentTarget.checked })} label="FSR upscaling" />
+              <Switch checked={settings.stream.micEnabled} onChange={(event) => updateStream({ micEnabled: event.currentTarget.checked })} label="Microphone bridge" />
+              <Switch checked={settings.stream.statsVisible} onChange={(event) => updateStream({ statsVisible: event.currentTarget.checked })} label="Stats overlay" />
+            </SimpleGrid>
+
+            <Group mt="lg">
+              <Button variant="light" color="gray" leftSection={<IconSettings size={16} />} onClick={reset}>
+                Reset defaults
+              </Button>
+              <Text size="xs" c="dimmed">Current defaults are applied to new stream sessions.</Text>
             </Group>
-            <TextInput
-              label="Extension bridge URL"
-              value={settings.bridgeUrl}
-              onChange={(event) => setSettings((current) => ({ ...current, bridgeUrl: event.currentTarget.value }))}
-            />
-            <Stack gap={6}>
-              <Text size="sm" fw={700}>Chrome extension folder</Text>
-              <Group gap="xs" wrap="nowrap">
-                <Code style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{EXTENSION_PATH}</Code>
-                <Button size="xs" variant="light" color="gray" leftSection={<IconCopy size={14} />} onClick={() => void copyExtensionPath()}>
-                  Copy
+          </SettingSection>
+
+          <SettingSection id="account" title="Account">
+            <Group justify="space-between" gap="md">
+              <Stack gap={3}>
+                <Group gap="xs">
+                  <Text size="sm" fw={700}>{user?.name || user?.email || 'OpenStroid user'}</Text>
+                  <Badge color={user ? 'brand' : 'red'} variant="light">{user ? 'Signed in' : 'Offline'}</Badge>
+                </Group>
+                <Text size="sm" c="dimmed">{user?.email ?? 'No email in local session.'}</Text>
+              </Stack>
+              <Group gap="xs">
+                <Button variant="light" color="gray" loading={isLoading} leftSection={<IconRefresh size={16} />} onClick={() => void refreshSession()}>
+                  Refresh session
+                </Button>
+                <Button variant="light" color="red" leftSection={<IconLogout size={16} />} onClick={() => void logout()}>
+                  Sign out
                 </Button>
               </Group>
-            </Stack>
-          </Stack>
-        </Paper>
-      </SimpleGrid>
+            </Group>
+          </SettingSection>
 
-      <Paper mt="lg" p="lg" radius="md" style={{ background: '#10141b', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <Stack gap="lg">
-          <Group gap="sm">
-            <ThemeIcon color="violet" variant="light" radius={8}>
-              <IconDeviceGamepad2 size={18} />
-            </ThemeIcon>
-            <Title order={3} fw={700}>Stream Defaults</Title>
-          </Group>
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-            <Stack gap="xs">
-              <Text size="sm" fw={800}>Quality preset</Text>
-              <SegmentedControl
-                value={settings.stream.quality}
-                onChange={(value) => updateStream({ quality: value as StreamQualityPreset })}
-                data={[
-                  { value: 'auto', label: 'Auto' },
-                  { value: 'high', label: 'High' },
-                  { value: 'balanced', label: 'Balanced' },
-                  { value: 'dataSaver', label: 'Low' },
-                ]}
-              />
-            </Stack>
-            <Stack gap="xs">
-              <Group justify="space-between">
-                <Text size="sm" fw={800}>Frame rate</Text>
-                <Text size="sm" c="dimmed">{settings.stream.maxFps} FPS</Text>
+          <SettingSection id="bridge" title="Bridge">
+            <Stack gap="md">
+              <Group justify="space-between" gap="md">
+                <Text size="sm" c="dimmed">Local bridge status</Text>
+                <Badge color={bridgeStatus === 'online' ? 'brand' : bridgeStatus === 'offline' ? 'red' : 'blue'} variant="light">
+                  {bridgeStatus}
+                </Badge>
               </Group>
-              <SegmentedControl
-                value={String(settings.stream.maxFps)}
-                onChange={(value) => updateStream({ maxFps: Number(value) >= 120 ? 120 : 60 })}
-                data={[
-                  { value: '60', label: '60 FPS' },
-                  { value: '120', label: '120 FPS' },
-                ]}
+              <TextInput
+                name="bridgeUrl"
+                label="Extension bridge URL"
+                value={settings.bridgeUrl}
+                onChange={(event) => setSettings((current) => ({ ...current, bridgeUrl: event.currentTarget.value }))}
               />
+              <Stack gap={6}>
+                <Text size="sm" fw={700}>Chrome extension folder</Text>
+                <Group gap="xs" wrap="nowrap">
+                  <Code style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{EXTENSION_PATH}</Code>
+                  <Button size="xs" variant="light" color="gray" leftSection={<IconCopy size={14} />} onClick={() => void copyExtensionPath()}>
+                    Copy
+                  </Button>
+                </Group>
+              </Stack>
+              <Text size="xs" c="dimmed">
+                Default bridge URL: <Code>{DEFAULT_SETTINGS.bridgeUrl}</Code>
+              </Text>
             </Stack>
-            <Stack gap="xs">
-              <Group justify="space-between">
-                <Text size="sm" fw={800}>Max bitrate</Text>
-                <Text size="sm" c="dimmed">{settings.stream.maxBitrate} Mbps</Text>
-              </Group>
-              <Slider
-                min={3}
-                max={40}
-                step={1}
-                value={settings.stream.maxBitrate}
-                onChange={(value) => updateStream({ maxBitrate: value })}
-                marks={[{ value: 7, label: '7' }, { value: 20, label: '20' }, { value: 40, label: '40' }]}
-              />
-            </Stack>
-            <Stack gap="xs">
-              <Group justify="space-between">
-                <Text size="sm" fw={800}>Volume</Text>
-                <Text size="sm" c="dimmed">{settings.stream.muted ? 'Muted' : `${settings.stream.volume}%`}</Text>
-              </Group>
-              <Slider
-                min={0}
-                max={100}
-                step={1}
-                value={settings.stream.volume}
-                onChange={(value) => updateStream({ volume: value, muted: value === 0 ? true : settings.stream.muted })}
-              />
-            </Stack>
-          </SimpleGrid>
-          <Divider color="rgba(255,255,255,0.08)" />
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
-            <Switch checked={settings.stream.muted} onChange={(event) => updateStream({ muted: event.currentTarget.checked })} label="Mute audio" />
-            <Switch checked={settings.stream.fsrEnabled} onChange={(event) => updateStream({ fsrEnabled: event.currentTarget.checked })} label="FSR upscaling" />
-            <Switch checked={settings.stream.micEnabled} onChange={(event) => updateStream({ micEnabled: event.currentTarget.checked })} label="Microphone bridge" />
-            <Switch checked={settings.stream.statsVisible} onChange={(event) => updateStream({ statsVisible: event.currentTarget.checked })} label="Stats overlay" />
-          </SimpleGrid>
-          <Group>
-            <Button variant="light" color="gray" leftSection={<IconSettings size={16} />} onClick={reset}>
-              Reset defaults
-            </Button>
-            <Text size="xs" c="dimmed">Current defaults are applied to new stream sessions.</Text>
-          </Group>
+          </SettingSection>
+
+          <SettingSection id="diagnostics" title="Diagnostics">
+            <AuthCaptureDebugPanel compact title="Latest upstream capture" />
+          </SettingSection>
         </Stack>
       </Paper>
-
-      <Paper mt="lg" p="lg" radius="md" style={{ background: '#10141b', border: '1px solid rgba(255,255,255,0.08)' }}>
-        <Stack gap="md">
-          <Group gap="sm">
-            <ThemeIcon color="yellow" variant="light" radius={8}>
-              <IconAlertCircle size={18} />
-            </ThemeIcon>
-            <Title order={3} fw={700}>Diagnostics</Title>
-          </Group>
-          <AuthCaptureDebugPanel compact title="Latest upstream capture" />
-        </Stack>
-      </Paper>
-
-      <Text mt="md" size="xs" c="dimmed">
-        Default bridge URL: <Code>{DEFAULT_SETTINGS.bridgeUrl}</Code>
-      </Text>
     </Box>
+  );
+}
+
+function SettingSection({ id, title, children }: { id: SettingsSectionId; title: string; children: ReactNode }) {
+  return (
+    <Paper id={`settings-${id}`} className="openstroid-settings-section" p="lg">
+      <Title className="openstroid-settings-section-header" order={3} fw={600}>
+        {title}
+      </Title>
+      <Box mt="lg">{children}</Box>
+    </Paper>
   );
 }

@@ -7,48 +7,49 @@ export function AppHeader() {
   const { user, logout } = useAuth();
 
   return (
-    <Group h="100%" px="lg" justify="space-between" wrap="nowrap">
-      <Group gap="sm" wrap="nowrap">
+    <Group className="openstroid-header-right" gap="sm" wrap="nowrap">
+      <Group gap="xs" wrap="nowrap" visibleFrom="md">
         <Badge
-          variant="light"
-          color="teal"
+          className="openstroid-header-chip"
+          variant="outline"
+          color="brand"
           leftSection={<IconPlugConnected size={13} />}
           styles={{ root: { textTransform: 'none' } }}
         >
           Bridge online
         </Badge>
-        <Text size="sm" c="dimmed" visibleFrom="sm">
-          {user?.email ?? 'Authenticated'}
-        </Text>
       </Group>
 
       <Menu shadow="md" width={200} position="bottom-end" withArrow>
         <Menu.Target>
-          <UnstyledButton>
-            <Group gap="xs">
+          <UnstyledButton className="openstroid-user-button" aria-label="Open account menu">
+            <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
               <Avatar
                 size={34}
-                radius="xl"
+                radius={7}
                 color="brand"
                 src={user?.avatar}
               >
                 {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?'}
               </Avatar>
-              <Box visibleFrom="sm">
-                <Text size="sm" fw={500} c="dimmed" style={{ lineHeight: 1.2 }}>
+              <Box visibleFrom="sm" style={{ minWidth: 0 }}>
+                <Text size="sm" fw={600} c="gray.3" truncate style={{ lineHeight: 1.2, maxWidth: 128 }}>
                   {user?.name || user?.email || 'Account'}
+                </Text>
+                <Text size="xs" fw={700} c="brand.4" tt="uppercase" style={{ lineHeight: 1.1 }}>
+                  OpenStroid
                 </Text>
               </Box>
               <IconChevronDown size={14} color="var(--mantine-color-dimmed)" />
             </Group>
           </UnstyledButton>
         </Menu.Target>
-        <Menu.Dropdown
-          style={{
-            backgroundColor: 'var(--mantine-color-dark-7)',
-            border: '1px solid var(--mantine-color-dark-4)',
-          }}
-        >
+          <Menu.Dropdown
+            style={{
+              backgroundColor: 'var(--os-panel)',
+              border: '1px solid var(--os-border)',
+            }}
+          >
           <Menu.Item
             leftSection={<IconUser size={14} />}
             disabled

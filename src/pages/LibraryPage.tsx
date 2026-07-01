@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
   Alert,
@@ -27,16 +27,14 @@ import {
 } from '@mantine/core';
 import {
   IconAlertCircle,
+  IconBooks,
   IconBrandSteam,
   IconChevronDown,
-  IconCloudComputing,
   IconCloudDownload,
   IconDeviceGamepad2,
-  IconInfoCircle,
   IconPlayerPlay,
   IconRefresh,
   IconSearch,
-  IconSparkles,
 } from '@tabler/icons-react';
 import {
   getGameDetails,
@@ -44,7 +42,6 @@ import {
   launchStream,
   synchronizePlatform,
 } from '../api';
-import { AuthCaptureDebugPanel } from '../components/AuthCaptureDebugPanel';
 import type { InstalledGame, LibraryDashboard } from '../types';
 
 type LoadState = 'loading' | 'success' | 'error';
@@ -249,8 +246,7 @@ export function MyGamesPage() {
   const installedIds = useMemo(() => new Set(installedGames.map((game) => game.id)), [installedGames]);
 
   const visibleGames = useMemo(() => {
-    const source = installedGames;
-    const filtered = source.filter((game) => {
+    const filtered = installedGames.filter((game) => {
       if (!matchesSearch(game, query)) return false;
       if (filter === 'controller') return isControllerFriendly(game);
       if (filter === 'free') return isFree(game);
@@ -258,11 +254,6 @@ export function MyGamesPage() {
     });
     return sortGames(filtered, filter === 'recent' ? 'recent' : sort);
   }, [filter, installedGames, query, sort]);
-
-  const featuredGame = useMemo(
-    () => installedGames.find((game) => imageUrl(game)) ?? installedGames[0] ?? null,
-    [installedGames],
-  );
 
   const handleLaunch = useCallback(async (game: InstalledGame) => {
     setLaunchingGameId(game.id);
@@ -321,19 +312,22 @@ export function MyGamesPage() {
 
   return (
     <Box maw={1440} mx="auto">
-      <Group justify="space-between" align="flex-start" mb="lg">
-        <Stack gap={4}>
-          <Title order={2} fw={800}>My Games</Title>
-          <Text c="dimmed" size="sm">
-            {installedGames.length} games from your Boosteroid installed list.
-          </Text>
-        </Stack>
+      <Group className="openstroid-page-head" justify="space-between" align="flex-start" gap="md">
+        <Group className="openstroid-title-lockup" gap="sm" wrap="nowrap">
+          <IconBooks className="openstroid-title-icon" size={26} />
+          <Stack gap={3} style={{ minWidth: 0 }}>
+            <Title order={2} fw={600}>My Games</Title>
+            <Text c="dimmed" size="sm">
+              {installedGames.length} games from your Boosteroid installed list.
+            </Text>
+          </Stack>
+        </Group>
         <Group gap="xs">
           <Button
             component={Link}
             to="/install"
             variant="light"
-            color="cyan"
+            color="brand"
             size="sm"
             leftSection={<IconCloudDownload size={16} />}
           >
@@ -382,7 +376,7 @@ export function MyGamesPage() {
       )}
 
       {loadState === 'success' && (
-        <Stack gap="xl">
+        <Stack gap="lg">
           {syncMessage && (
             <Alert color={syncMessage.includes('Could not') ? 'red' : 'teal'} variant="light" withCloseButton onClose={() => setSyncMessage('')}>
               {syncMessage}
@@ -396,29 +390,19 @@ export function MyGamesPage() {
           )}
 
           {launchingGameId !== null && (
-            <Alert color="cyan" variant="light" radius="md" title={`Starting ${launchingGameName}`}>
+            <Alert color="brand" variant="light" radius="md" title={`Starting ${launchingGameName}`}>
               Requesting a Boosteroid machine. Queue and startup state will continue in the stream window.
             </Alert>
           )}
 
-          {featuredGame && (
-            <FeaturePanel
-              game={featuredGame}
-              installed={installedIds.has(featuredGame.id)}
-              isLaunching={launchingGameId === featuredGame.id}
-              onLaunch={handleLaunch}
-              onDetails={openDetails}
-            />
-          )}
-
-          <Group align="flex-end" justify="space-between" gap="md">
-            <Group gap="sm" style={{ flex: 1 }}>
+          <Group className="openstroid-toolbar" align="center" justify="space-between" gap="md">
+            <Group gap="sm" style={{ flex: 1, minWidth: 0 }}>
               <TextInput
-                placeholder="Search games"
+                placeholder="Search your library"
                 leftSection={<IconSearch size={16} />}
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
-                w={{ base: '100%', sm: 320 }}
+                w={{ base: '100%', sm: 340 }}
               />
               <Select
                 aria-label="Sort games"
@@ -429,7 +413,7 @@ export function MyGamesPage() {
                   { value: 'recent', label: 'Recent' },
                   { value: 'store', label: 'Store' },
                 ]}
-                w={140}
+                w={{ base: '100%', xs: 150 }}
               />
             </Group>
             <SegmentedControl
@@ -447,7 +431,7 @@ export function MyGamesPage() {
           {visibleGames.length === 0 ? (
             <EmptyLibrary />
           ) : (
-            <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing="md">
+            <Box className="openstroid-game-grid">
               {visibleGames.map((game) => (
                 <GameCard
                   key={game.id}
@@ -458,14 +442,8 @@ export function MyGamesPage() {
                   onDetails={openDetails}
                 />
               ))}
-            </SimpleGrid>
+            </Box>
           )}
-
-          <DashboardFacts dashboard={dashboard} installedCount={installedGames.length} />
-
-          <Box>
-            <AuthCaptureDebugPanel compact title="Diagnostics: latest upstream capture" />
-          </Box>
         </Stack>
       )}
 
@@ -477,58 +455,6 @@ export function MyGamesPage() {
         onClose={() => setSelectedGame(null)}
         onLaunch={handleLaunch}
       />
-    </Box>
-  );
-}
-
-function FeaturePanel({
-  game,
-  installed,
-  isLaunching,
-  onLaunch,
-  onDetails,
-}: {
-  game: InstalledGame;
-  installed: boolean;
-  isLaunching: boolean;
-  onLaunch: (game: InstalledGame) => void;
-  onDetails: (game: InstalledGame) => void;
-}) {
-  const coverUrl = imageUrl(game);
-
-  return (
-    <Box
-      style={{
-        position: 'relative',
-        minHeight: 260,
-        borderRadius: 8,
-        overflow: 'hidden',
-        background: '#12161f',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }}
-    >
-      {coverUrl && <Image src={coverUrl} alt={game.name} fit="cover" h={300} w="100%" />}
-      <Overlay gradient="linear-gradient(90deg, rgba(6,8,12,0.95), rgba(6,8,12,0.72) 45%, rgba(6,8,12,0.08))" zIndex={1} />
-      <Stack gap="md" maw={520} p="xl" style={{ position: 'absolute', inset: 0, zIndex: 2, justifyContent: 'flex-end' }}>
-        <Group gap="xs">
-          <Badge color={installed ? 'teal' : 'gray'} variant="filled">{installed ? 'Installed' : storeLabel(game)}</Badge>
-          {isControllerFriendly(game) && <Badge color="indigo" variant="light">Controller</Badge>}
-        </Group>
-        <Stack gap={4}>
-          <Title order={2} c="white" fw={800}>{game.name}</Title>
-          <Text size="sm" c="gray.3" lineClamp={2}>
-            {String(game.description ?? 'Ready through the captured Boosteroid dashboard data.')}
-          </Text>
-        </Stack>
-        <Group>
-          <Button leftSection={<IconPlayerPlay size={16} />} color="teal" loading={isLaunching} onClick={() => onLaunch(game)}>
-            Play
-          </Button>
-          <Button variant="light" color="gray" leftSection={<IconInfoCircle size={16} />} onClick={() => void onDetails(game)}>
-            Details
-          </Button>
-        </Group>
-      </Stack>
     </Box>
   );
 }
@@ -551,13 +477,18 @@ function GameCard({
   return (
     <Card
       padding={0}
-      style={{
-        backgroundColor: '#12161f',
-        border: '1px solid rgba(255,255,255,0.08)',
-        overflow: 'hidden',
+      className="openstroid-game-card"
+      role="button"
+      tabIndex={0}
+      onClick={() => void onDetails(game)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          void onDetails(game);
+        }
       }}
     >
-      <Box style={{ position: 'relative', aspectRatio: '3 / 4', overflow: 'hidden' }}>
+      <Box className="openstroid-game-card-media">
         {coverUrl ? (
           <Image src={coverUrl} alt={game.name} h="100%" w="100%" fit="cover" />
         ) : (
@@ -565,63 +496,27 @@ function GameCard({
             <IconDeviceGamepad2 size={42} color="var(--mantine-color-dark-2)" />
           </Center>
         )}
-        <Overlay gradient="linear-gradient(0deg, rgba(0,0,0,0.9), rgba(0,0,0,0.05) 64%)" zIndex={1} />
-        <Stack gap={6} p="sm" style={{ position: 'absolute', inset: 'auto 0 0 0', zIndex: 2 }}>
-          <Group gap={6}>
-            <Badge size="xs" color={installed ? 'teal' : 'gray'} variant={installed ? 'filled' : 'light'}>
-              {installed ? 'Installed' : storeLabel(game)}
-            </Badge>
-          </Group>
-          <Text fw={700} size="sm" c="white" lineClamp={2} lh={1.25}>{game.name}</Text>
-          <Group gap={6} wrap="nowrap">
-            <Button
-              size="xs"
-              color="teal"
-              leftSection={<IconPlayerPlay size={13} />}
-              loading={isLaunching}
-              onClick={() => onLaunch(game)}
-              style={{ flex: 1 }}
-            >
-              Play
-            </Button>
-            <Tooltip label="Details">
-              <ActionIcon size="lg" variant="light" color="gray" onClick={() => void onDetails(game)}>
-                <IconInfoCircle size={16} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-        </Stack>
+        <span className="openstroid-card-gradient" />
+        {installed && <span className="openstroid-card-state">✓</span>}
+        <button
+          type="button"
+          className="openstroid-card-action"
+          title={`Play ${game.name}`}
+          aria-label={`Play ${game.name}`}
+          disabled={isLaunching}
+          onClick={(event) => {
+            event.stopPropagation();
+            onLaunch(game);
+          }}
+        >
+          <IconPlayerPlay size={18} fill="currentColor" />
+        </button>
+        <Box className="openstroid-card-info">
+          <Text className="openstroid-card-platform">{storeLabel(game)}</Text>
+          <Text className="openstroid-card-title">{game.name}</Text>
+        </Box>
       </Box>
     </Card>
-  );
-}
-
-function DashboardFacts({ dashboard, installedCount }: { dashboard: LibraryDashboard; installedCount: number }) {
-  const activeSubscriptions = dashboard.account.subscriptions.length;
-  const hasActiveSession = Boolean(dashboard.sessions.active && Object.keys(dashboard.sessions.active).length > 0);
-
-  return (
-    <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-      <Fact icon={<IconDeviceGamepad2 size={18} />} label="Installed games" value={String(installedCount)} tone="teal" />
-      <Fact icon={<IconCloudComputing size={18} />} label="Session state" value={hasActiveSession ? 'Active' : 'Idle'} tone={hasActiveSession ? 'green' : 'gray'} />
-      <Fact icon={<IconSparkles size={18} />} label="Subscription records" value={String(activeSubscriptions)} tone="yellow" />
-    </SimpleGrid>
-  );
-}
-
-function Fact({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: string }) {
-  return (
-    <Group
-      gap="sm"
-      p="md"
-      style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, background: '#10141b' }}
-    >
-      <ThemeIcon color={tone} variant="light" radius={8}>{icon}</ThemeIcon>
-      <Box>
-        <Text size="xs" c="dimmed">{label}</Text>
-        <Text fw={800}>{value}</Text>
-      </Box>
-    </Group>
   );
 }
 
@@ -651,8 +546,8 @@ function GameDetailsDrawer({
             <Overlay gradient="linear-gradient(0deg, rgba(0,0,0,0.75), rgba(0,0,0,0.1))" zIndex={1} />
             <Stack gap={6} p="md" style={{ position: 'absolute', bottom: 0, zIndex: 2 }}>
               <Group gap="xs">
-                <Badge color={installed ? 'teal' : 'gray'}>{installed ? 'Installed' : storeLabel(game)}</Badge>
-                {isControllerFriendly(game) && <Badge color="indigo" variant="light">Controller</Badge>}
+                <Badge color={installed ? 'brand' : 'gray'}>{installed ? 'Installed' : storeLabel(game)}</Badge>
+                {isControllerFriendly(game) && <Badge color="blue" variant="light">Controller</Badge>}
               </Group>
               <Title order={3} c="white">{game.name}</Title>
             </Stack>
@@ -669,7 +564,7 @@ function GameDetailsDrawer({
             <Detail label="Input" value={isControllerFriendly(game) ? 'Controller ready' : 'Keyboard/mouse'} />
           </SimpleGrid>
           <Group>
-            <Button color="teal" leftSection={<IconPlayerPlay size={16} />} loading={isLaunching} onClick={() => onLaunch(game)}>
+            <Button color="brand" leftSection={<IconPlayerPlay size={16} />} loading={isLaunching} onClick={() => onLaunch(game)}>
               Play
             </Button>
             <Button variant="light" color="gray" onClick={() => window.open(`https://cloud.boosteroid.com/application/${game.id}`, '_blank', 'noopener,noreferrer')}>
@@ -693,11 +588,14 @@ function Detail({ label, value }: { label: string; value: string }) {
 
 function LibrarySkeleton() {
   return (
-    <Stack gap="xl">
-      <Skeleton height={260} radius="md" />
-      <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing="md">
+    <Stack gap="lg">
+      <Group className="openstroid-toolbar" gap="md">
+        <Skeleton height={38} width={340} radius="md" />
+        <Skeleton height={38} width={150} radius="md" />
+      </Group>
+      <SimpleGrid cols={{ base: 1, xs: 2, sm: 3, md: 4, lg: 5, xl: 6 }} spacing="md">
         {Array.from({ length: 12 }).map((_, i) => (
-          <Skeleton key={i} height={260} radius="md" />
+          <Skeleton key={i} height={220} radius="md" />
         ))}
       </SimpleGrid>
     </Stack>
@@ -709,10 +607,10 @@ function EmptyLibrary() {
     <Center py={72}>
       <Stack align="center" gap="md" maw={420}>
         <ThemeIcon size={72} radius={8} variant="light" color="gray">
-          <IconCloudComputing size={36} />
+          <IconDeviceGamepad2 size={36} />
         </ThemeIcon>
         <Stack gap={4} align="center">
-          <Title order={3} fw={700} ta="center">No games match this view</Title>
+          <Title order={3} fw={600} ta="center">No games match this view</Title>
           <Text c="dimmed" size="sm" ta="center">
             Adjust search or filters, then refresh the captured Boosteroid dashboard data.
           </Text>
