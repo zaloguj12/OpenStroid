@@ -1,36 +1,22 @@
-import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  Alert,
-  Badge,
-  Box,
-  Button,
-  Code,
-  Group,
-  Paper,
-  SegmentedControl,
-  SimpleGrid,
-  Slider,
-  Stack,
-  Switch,
-  Text,
-  TextInput,
-  Title,
-  UnstyledButton,
-} from '@mantine/core';
-import {
-  IconAlertCircle,
-  IconCheck,
-  IconCopy,
-  IconDeviceGamepad2,
-  IconLogout,
-  IconPlugConnected,
-  IconRefresh,
-  IconSearch,
-  IconSettings,
-  IconUser,
-  IconX,
-} from '@tabler/icons-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+  AlertCircle,
+  Check,
+  Copy,
+  Gauge,
+  HardDrive,
+  LogOut,
+  Monitor,
+  Plug,
+  RefreshCcw,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Users,
+  Volume2,
+  Wifi,
+  X,
+} from 'lucide-react';
 import { AuthCaptureDebugPanel } from '../components/AuthCaptureDebugPanel';
 import { useAuth } from '../auth';
 import {
@@ -47,15 +33,41 @@ const EXTENSION_PATH = 'C:\\Users\\Zortos\\Projects\\OpenStroid\\extension\\open
 
 type SettingsSectionId = 'account' | 'bridge' | 'stream' | 'diagnostics';
 
-const SETTINGS_NAV: Array<{
-  id: SettingsSectionId;
+const SETTINGS_NAV_GROUPS: Array<{
   label: string;
-  icon: ComponentType<{ size?: number; stroke?: number }>;
+  items: Array<{
+    id: SettingsSectionId;
+    label: string;
+    icon: ReactNode;
+    keywords: string[];
+  }>;
 }> = [
-  { id: 'stream', label: 'Stream', icon: IconDeviceGamepad2 },
-  { id: 'account', label: 'Account', icon: IconUser },
-  { id: 'bridge', label: 'Bridge', icon: IconPlugConnected },
-  { id: 'diagnostics', label: 'Diagnostics', icon: IconAlertCircle },
+  {
+    label: 'Account',
+    items: [
+      { id: 'account', label: 'Account', icon: <Users size={15} />, keywords: ['session', 'sign', 'profile', 'email'] },
+    ],
+  },
+  {
+    label: 'Streaming',
+    items: [
+      { id: 'stream', label: 'Stream', icon: <Wifi size={15} />, keywords: ['quality', 'fps', 'bitrate', 'volume', 'audio', 'fsr', 'microphone', 'stats'] },
+    ],
+  },
+  {
+    label: 'App',
+    items: [
+      { id: 'bridge', label: 'Bridge', icon: <Plug size={15} />, keywords: ['extension', 'url', 'health', 'chrome'] },
+      { id: 'diagnostics', label: 'Diagnostics', icon: <AlertCircle size={15} />, keywords: ['debug', 'capture', 'logs'] },
+    ],
+  },
+];
+
+const QUALITY_PRESETS: Array<{ value: StreamQualityPreset; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'high', label: 'High' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'dataSaver', label: 'Low' },
 ];
 
 function updateStreamSettings(settings: AppSettings, patch: Partial<StreamDefaults>): AppSettings {
@@ -68,15 +80,24 @@ function updateStreamSettings(settings: AppSettings, patch: Partial<StreamDefaul
   };
 }
 
-export function SettingsPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
+function bridgeBadgeClass(status: 'checking' | 'online' | 'offline'): string {
+  if (status === 'online') return 'settings-inline-badge settings-inline-badge--online';
+  if (status === 'offline') return 'settings-inline-badge settings-inline-badge--offline';
+  return 'settings-inline-badge settings-inline-badge--checking';
+}
+
+interface SettingsPageProps {
+  onClose: () => void;
+}
+
+export function SettingsPage({ onClose }: SettingsPageProps) {
   const { user, logout, refreshSession, isLoading } = useAuth();
   const [settings, setSettings] = useState<AppSettings>(() => readAppSettings());
-  const [status, setStatus] = useState('');
-  const [statusTone, setStatusTone] = useState<'teal' | 'red' | 'blue'>('blue');
+  const [savedIndicator, setSavedIndicator] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
   const [bridgeStatus, setBridgeStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('stream');
+  const [settingsSearch, setSettingsSearch] = useState('');
 
   const checkBridge = useCallback(async () => {
     setBridgeStatus('checking');
@@ -96,48 +117,48 @@ export function SettingsPage() {
     return () => window.clearTimeout(handle);
   }, [checkBridge]);
 
-  const updateStream = useCallback((patch: Partial<StreamDefaults>) => {
-    setSettings((current) => updateStreamSettings(current, patch));
+  const flashSaved = useCallback((message?: string) => {
+    if (message) setStatusMessage(message);
+    setSavedIndicator(true);
+    window.setTimeout(() => {
+      setSavedIndicator(false);
+      setStatusMessage('');
+    }, 1500);
   }, []);
 
-  const save = useCallback(() => {
-    saveAppSettings(settings);
-    setStatusTone('teal');
-    setStatus('Settings saved.');
-  }, [settings]);
+  const updateStream = useCallback((patch: Partial<StreamDefaults>) => {
+    setSettings((current) => {
+      const next = updateStreamSettings(current, patch);
+      saveAppSettings(next);
+      return next;
+    });
+    flashSaved('Saved');
+  }, [flashSaved]);
 
   const reset = useCallback(() => {
     const defaults = resetAppSettings();
     setSettings(defaults);
-    setStatusTone('blue');
-    setStatus('Settings reset to defaults.');
-  }, []);
+    flashSaved('Defaults restored');
+  }, [flashSaved]);
 
   const copyExtensionPath = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(EXTENSION_PATH);
-      setStatusTone('teal');
-      setStatus('Extension folder copied.');
+      flashSaved('Path copied');
     } catch {
-      setStatusTone('red');
-      setStatus('Could not copy extension folder.');
+      flashSaved('Copy failed');
     }
-  }, []);
+  }, [flashSaved]);
 
   const navigateSettings = useCallback((section: SettingsSectionId) => {
     setActiveSection(section);
-    document.getElementById(`settings-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setSettingsSearch('');
+    document.querySelector('.settings-content')?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
-
-  const closeSettings = useCallback(() => {
-    const state = location.state as { backgroundPath?: string } | null;
-    const backgroundPath = state?.backgroundPath;
-    navigate(backgroundPath && backgroundPath !== '/settings' ? backgroundPath : '/my-games');
-  }, [location.state, navigate]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeSettings();
+      if (event.key === 'Escape') onClose();
     };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -146,198 +167,368 @@ export function SettingsPage() {
       window.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [closeSettings]);
+  }, [onClose]);
+
+  const searchQuery = settingsSearch.trim().toLowerCase();
+  const showAll = searchQuery.length > 0;
+
+  const filteredGroups = useMemo(() => {
+    if (!showAll) return SETTINGS_NAV_GROUPS;
+    return SETTINGS_NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        item.label.toLowerCase().includes(searchQuery)
+        || item.keywords.some((keyword) => keyword.includes(searchQuery)),
+      ),
+    })).filter((group) => group.items.length > 0);
+  }, [searchQuery, showAll]);
+
+  const sectionVisible = useCallback((section: SettingsSectionId) => {
+    if (!showAll) return activeSection === section;
+    const navItem = SETTINGS_NAV_GROUPS.flatMap((group) => group.items).find((item) => item.id === section);
+    if (!navItem) return false;
+    return navItem.label.toLowerCase().includes(searchQuery)
+      || navItem.keywords.some((keyword) => keyword.includes(searchQuery));
+  }, [activeSection, searchQuery, showAll]);
+
+  const hasVisibleSections =
+    sectionVisible('stream')
+    || sectionVisible('account')
+    || sectionVisible('bridge')
+    || sectionVisible('diagnostics');
 
   return (
-    <Box className="openstroid-settings-overlay" role="dialog" aria-modal="true" aria-label="Settings">
-      <button type="button" className="openstroid-settings-scrim" aria-label="Close settings" onClick={closeSettings} />
+    <>
+      <header className="settings-modal-header">
+        <h1>Settings</h1>
+        <div className="settings-modal-header-actions">
+          <div className={`settings-saved ${savedIndicator ? 'visible' : ''}`}>
+            <Check size={14} />
+            {statusMessage || 'Saved'}
+          </div>
+          <button
+            type="button"
+            className="settings-modal-close"
+            onClick={onClose}
+            title="Close"
+            aria-label="Close settings"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      </header>
 
-      <Paper className="openstroid-settings-modal" p={0} onClick={(event) => event.stopPropagation()}>
-        <Group className="openstroid-settings-modal-header" justify="space-between" wrap="nowrap">
-          <Title order={1}>Settings</Title>
-          <Group gap="xs" wrap="nowrap">
-            {status && (
-              <Alert color={statusTone} variant="light" py={5} px="sm" withCloseButton onClose={() => setStatus('')}>
-                {status}
-              </Alert>
-            )}
-            <Button variant="light" color="gray" size="xs" leftSection={<IconRefresh size={14} />} onClick={() => void checkBridge()}>
-              Check bridge
-            </Button>
-            <Button color="brand" size="xs" leftSection={<IconCheck size={14} />} onClick={save}>
-              Save
-            </Button>
-            <UnstyledButton className="openstroid-settings-close" aria-label="Close settings" onClick={closeSettings}>
-              <IconX size={16} />
-            </UnstyledButton>
-          </Group>
-        </Group>
-
-        <Paper className="openstroid-settings-shell" p={0}>
-          <aside className="openstroid-settings-rail" aria-label="Settings sections">
-            <TextInput
-              aria-label="Search settings"
+      <div className="settings-layout">
+        <nav className="settings-sidebar" aria-label="Settings sections">
+          <div className="settings-search-wrap">
+            <Search size={13} className="settings-search-icon" />
+            <input
+              type="text"
+              className="settings-search-input"
               placeholder="Search settings..."
-              leftSection={<IconSearch size={16} />}
+              aria-label="Search settings"
+              value={settingsSearch}
+              onChange={(event) => setSettingsSearch(event.currentTarget.value)}
             />
-            <nav className="openstroid-settings-nav">
-              {SETTINGS_NAV.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <UnstyledButton
-                    key={item.id}
-                    className="openstroid-settings-nav-item"
-                    data-active={activeSection === item.id}
-                    onClick={() => navigateSettings(item.id)}
-                  >
-                    <Icon size={16} stroke={2} />
-                    <span>{item.label}</span>
-                  </UnstyledButton>
-                );
-              })}
-            </nav>
-          </aside>
+            {settingsSearch && (
+                <button type="button" className="settings-search-clear" aria-label="Clear search" onClick={() => setSettingsSearch('')}>
+                  <X size={11} />
+                </button>
+            )}
+          </div>
 
-          <Stack className="openstroid-settings-content" gap="md">
-            <SettingSection id="stream" title="Stream Defaults">
-              <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
-                <Stack gap="xs">
-                  <Text size="sm" fw={700}>Quality preset</Text>
-                  <SegmentedControl
-                    value={settings.stream.quality}
-                    onChange={(value) => updateStream({ quality: value as StreamQualityPreset })}
-                    data={[
-                      { value: 'auto', label: 'Auto' },
-                      { value: 'high', label: 'High' },
-                      { value: 'balanced', label: 'Balanced' },
-                      { value: 'dataSaver', label: 'Low' },
-                    ]}
-                  />
-                </Stack>
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text size="sm" fw={700}>Frame rate</Text>
-                    <Text size="sm" c="dimmed">{settings.stream.maxFps} FPS</Text>
-                  </Group>
-                  <SegmentedControl
-                    value={String(settings.stream.maxFps)}
-                    onChange={(value) => updateStream({ maxFps: Number(value) >= 120 ? 120 : 60 })}
-                    data={[
-                      { value: '60', label: '60 FPS' },
-                      { value: '120', label: '120 FPS' },
-                    ]}
-                  />
-                </Stack>
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text size="sm" fw={700}>Max bitrate</Text>
-                    <Text size="sm" c="dimmed">{settings.stream.maxBitrate} Mbps</Text>
-                  </Group>
-                  <Slider
-                    min={3}
-                    max={40}
-                    step={1}
-                    value={settings.stream.maxBitrate}
-                    onChange={(value) => updateStream({ maxBitrate: value })}
-                    marks={[{ value: 7, label: '7' }, { value: 20, label: '20' }, { value: 40, label: '40' }]}
-                  />
-                </Stack>
-                <Stack gap="xs">
-                  <Group justify="space-between">
-                    <Text size="sm" fw={700}>Volume</Text>
-                    <Text size="sm" c="dimmed">{settings.stream.muted ? 'Muted' : `${settings.stream.volume}%`}</Text>
-                  </Group>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={settings.stream.volume}
-                    onChange={(value) => updateStream({ volume: value, muted: value === 0 ? true : settings.stream.muted })}
-                  />
-                </Stack>
-              </SimpleGrid>
+          <div className="settings-nav">
+            {filteredGroups.map((group) => (
+              <div key={group.label} className="settings-nav-group">
+                <div className="settings-nav-group-label">{group.label}</div>
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`settings-nav-item ${!showAll && activeSection === item.id ? 'active' : ''}`}
+                      onClick={() => navigateSettings(item.id)}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  ))}
+              </div>
+            ))}
+          </div>
+        </nav>
 
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md" mt="lg">
-                <Switch checked={settings.stream.muted} onChange={(event) => updateStream({ muted: event.currentTarget.checked })} label="Mute audio" />
-                <Switch checked={settings.stream.fsrEnabled} onChange={(event) => updateStream({ fsrEnabled: event.currentTarget.checked })} label="FSR upscaling" />
-                <Switch checked={settings.stream.micEnabled} onChange={(event) => updateStream({ micEnabled: event.currentTarget.checked })} label="Microphone bridge" />
-                <Switch checked={settings.stream.statsVisible} onChange={(event) => updateStream({ statsVisible: event.currentTarget.checked })} label="Stats overlay" />
-              </SimpleGrid>
+        <div className="settings-content">
+          {!hasVisibleSections ? (
+            <section className="settings-section">
+              <div className="settings-thanks-state settings-thanks-state--muted">
+                No settings match &ldquo;{settingsSearch.trim()}&rdquo;
+              </div>
+            </section>
+          ) : (
+            <>
+              {sectionVisible('stream') && (
+                <SettingSection id="stream" title="Stream defaults" icon={<Monitor size={18} />}>
+                  <div className="settings-rows">
+                    <div className="settings-row settings-row--column">
+                      <label className="settings-label settings-label--with-icon">
+                        <SlidersHorizontal size={15} className="settings-label-icon" />
+                        Quality preset
+                      </label>
+                      <div className="settings-chip-row">
+                        {QUALITY_PRESETS.map((preset) => (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            className={`settings-chip ${settings.stream.quality === preset.value ? 'active' : ''}`}
+                            onClick={() => updateStream({ quality: preset.value })}
+                          >
+                            <span>{preset.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              <Group mt="lg">
-                <Button variant="light" color="gray" leftSection={<IconSettings size={16} />} onClick={reset}>
-                  Reset defaults
-                </Button>
-                <Text size="xs" c="dimmed">Current defaults are applied to new stream sessions.</Text>
-              </Group>
-            </SettingSection>
+                    <div className="settings-row">
+                      <label className="settings-label settings-label--with-icon">
+                        <Gauge size={15} className="settings-label-icon" />
+                        Frame rate
+                      </label>
+                      <div className="settings-chip-row">
+                        {[60, 120].map((fps) => (
+                          <button
+                            key={fps}
+                            type="button"
+                            className={`settings-chip ${settings.stream.maxFps === fps ? 'active' : ''}`}
+                            onClick={() => updateStream({ maxFps: fps })}
+                          >
+                            <span>{fps} FPS</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-            <SettingSection id="account" title="Account">
-              <Group justify="space-between" gap="md">
-                <Stack gap={3}>
-                  <Group gap="xs">
-                    <Text size="sm" fw={700}>{user?.name || user?.email || 'OpenStroid user'}</Text>
-                    <Badge color={user ? 'brand' : 'red'} variant="light">{user ? 'Signed in' : 'Offline'}</Badge>
-                  </Group>
-                  <Text size="sm" c="dimmed">{user?.email ?? 'No email in local session.'}</Text>
-                </Stack>
-                <Group gap="xs">
-                  <Button variant="light" color="gray" loading={isLoading} leftSection={<IconRefresh size={16} />} onClick={() => void refreshSession()}>
-                    Refresh session
-                  </Button>
-                  <Button variant="light" color="red" leftSection={<IconLogout size={16} />} onClick={() => void logout()}>
-                    Sign out
-                  </Button>
-                </Group>
-              </Group>
-            </SettingSection>
+                    <div className="settings-row settings-row--column">
+                      <div className="settings-row-top">
+                        <label className="settings-label settings-label--with-icon">
+                          <HardDrive size={15} className="settings-label-icon" />
+                          Max bitrate
+                        </label>
+                        <span className="settings-value-badge">{settings.stream.maxBitrate} Mbps</span>
+                      </div>
+                      <input
+                        type="range"
+                        name="maxBitrate"
+                        className="settings-slider"
+                        min={3}
+                        max={40}
+                        step={1}
+                        value={settings.stream.maxBitrate}
+                        aria-label="Max bitrate"
+                        onChange={(event) => updateStream({ maxBitrate: Number(event.currentTarget.value) })}
+                      />
+                    </div>
 
-            <SettingSection id="bridge" title="Bridge">
-              <Stack gap="md">
-                <Group justify="space-between" gap="md">
-                  <Text size="sm" c="dimmed">Local bridge status</Text>
-                  <Badge color={bridgeStatus === 'online' ? 'brand' : bridgeStatus === 'offline' ? 'red' : 'blue'} variant="light">
-                    {bridgeStatus}
-                  </Badge>
-                </Group>
-                <TextInput
-                  name="bridgeUrl"
-                  label="Extension bridge URL"
-                  value={settings.bridgeUrl}
-                  onChange={(event) => setSettings((current) => ({ ...current, bridgeUrl: event.currentTarget.value }))}
-                />
-                <Stack gap={6}>
-                  <Text size="sm" fw={700}>Chrome extension folder</Text>
-                  <Group gap="xs" wrap="nowrap">
-                    <Code style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{EXTENSION_PATH}</Code>
-                    <Button size="xs" variant="light" color="gray" leftSection={<IconCopy size={14} />} onClick={() => void copyExtensionPath()}>
-                      Copy
-                    </Button>
-                  </Group>
-                </Stack>
-                <Text size="xs" c="dimmed">
-                  Default bridge URL: <Code>{DEFAULT_SETTINGS.bridgeUrl}</Code>
-                </Text>
-              </Stack>
-            </SettingSection>
+                    <div className="settings-row settings-row--column">
+                      <div className="settings-row-top">
+                        <label className="settings-label settings-label--with-icon">
+                          <Volume2 size={15} className="settings-label-icon" />
+                          Volume
+                        </label>
+                        <span className="settings-value-badge">
+                          {settings.stream.muted ? 'Muted' : `${settings.stream.volume}%`}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        name="volume"
+                        className="settings-slider"
+                        max={100}
+                        step={1}
+                        value={settings.stream.volume}
+                        aria-label="Volume"
+                        onChange={(event) => {
+                          const volume = Number(event.currentTarget.value);
+                          updateStream({ volume, muted: volume === 0 ? true : settings.stream.muted });
+                        }}
+                      />
+                    </div>
+                  </div>
 
-            <SettingSection id="diagnostics" title="Diagnostics">
-              <AuthCaptureDebugPanel compact title="Latest upstream capture" />
-            </SettingSection>
-          </Stack>
-        </Paper>
-      </Paper>
-    </Box>
+                  <div className="settings-toggle-grid">
+                    <StreamToggle
+                      label="Mute audio"
+                      checked={settings.stream.muted}
+                      onChange={(checked) => updateStream({ muted: checked })}
+                    />
+                    <StreamToggle
+                      label="FSR upscaling"
+                      checked={settings.stream.fsrEnabled}
+                      onChange={(checked) => updateStream({ fsrEnabled: checked })}
+                    />
+                    <StreamToggle
+                      label="Microphone bridge"
+                      checked={settings.stream.micEnabled}
+                      onChange={(checked) => updateStream({ micEnabled: checked })}
+                    />
+                    <StreamToggle
+                      label="Stats overlay"
+                      checked={settings.stream.statsVisible}
+                      onChange={(checked) => updateStream({ statsVisible: checked })}
+                    />
+                  </div>
+
+                  <div className="settings-footer-row">
+                    <button type="button" className="settings-export-logs-btn" onClick={reset}>
+                      <RotateCcw size={16} />
+                      Reset defaults
+                    </button>
+                    <span className="settings-subtle-hint">Defaults apply to new stream sessions.</span>
+                  </div>
+                </SettingSection>
+              )}
+
+              {sectionVisible('account') && (
+                <SettingSection id="account" title="Account" icon={<Users size={18} />}>
+                  <div className="settings-rows">
+                    <div className="settings-row settings-row--top-aligned">
+                      <div>
+                        <div className="settings-label">{user?.name || user?.email || 'OpenStroid user'}</div>
+                        <span className="settings-hint">{user?.email ?? 'No email in local session.'}</span>
+                        <div className="settings-account-badge-row">
+                          <span className={user ? 'settings-inline-badge settings-inline-badge--online' : 'settings-inline-badge settings-inline-badge--offline'}>
+                            {user ? 'Signed in' : 'Offline'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="settings-account-actions">
+                        <button
+                          type="button"
+                          className="settings-export-logs-btn"
+                          disabled={isLoading}
+                          onClick={() => void refreshSession()}
+                        >
+                          <RefreshCcw size={16} />
+                          Refresh session
+                        </button>
+                        <button type="button" className="settings-delete-cache-btn" onClick={() => void logout()}>
+                          <LogOut size={16} />
+                          Sign out
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </SettingSection>
+              )}
+
+              {sectionVisible('bridge') && (
+                <SettingSection id="bridge" title="Bridge" icon={<Plug size={18} />}>
+                  <div className="settings-rows">
+                    <div className="settings-row">
+                      <span className="settings-label">Local bridge status</span>
+                      <div className="settings-account-actions">
+                        <span className={bridgeBadgeClass(bridgeStatus)}>{bridgeStatus}</span>
+                        <button type="button" className="settings-export-logs-btn settings-save-btn--compact" onClick={() => void checkBridge()}>
+                          <RefreshCcw size={14} />
+                          Check bridge
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="settings-row settings-row--column">
+                      <label className="settings-label" htmlFor="bridge-url">Extension bridge URL</label>
+                      <input
+                        id="bridge-url"
+                        name="bridgeUrl"
+                        type="text"
+                        className="settings-text-input"
+                        value={settings.bridgeUrl}
+                        onChange={(event) => {
+                          setSettings((current) => {
+                            const next = { ...current, bridgeUrl: event.currentTarget.value };
+                            saveAppSettings(next);
+                            return next;
+                          });
+                          flashSaved('Saved');
+                        }}
+                      />
+                      <span className="settings-hint">
+                        Default: <code>{DEFAULT_SETTINGS.bridgeUrl}</code>
+                      </span>
+                    </div>
+
+                    <div className="settings-row settings-row--column">
+                      <label className="settings-label">Chrome extension folder</label>
+                      <div className="settings-path-control">
+                        <code className="settings-path-value">{EXTENSION_PATH}</code>
+                        <button type="button" className="settings-export-logs-btn settings-save-btn--compact" onClick={() => void copyExtensionPath()}>
+                          <Copy size={14} />
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </SettingSection>
+              )}
+
+              {sectionVisible('diagnostics') && (
+                <SettingSection id="diagnostics" title="Diagnostics" icon={<AlertCircle size={18} />}>
+                  <AuthCaptureDebugPanel compact variant="settings" title="Latest upstream capture" />
+                </SettingSection>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
-function SettingSection({ id, title, children }: { id: SettingsSectionId; title: string; children: ReactNode }) {
+function SettingSection({
+  id,
+  title,
+  icon,
+  children,
+}: {
+  id: SettingsSectionId;
+  title: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
   return (
-    <Paper id={`settings-${id}`} className="openstroid-settings-section" p="lg">
-      <Title className="openstroid-settings-section-header" order={3} fw={600}>
-        {title}
-      </Title>
-      <Box mt="lg">{children}</Box>
-    </Paper>
+    <section id={`settings-${id}`} className="settings-section">
+      <div className="settings-section-header">
+        {icon}
+        <h2>{title}</h2>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function StreamToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const inputId = `settings-toggle-${label.replace(/\s+/g, '-').toLowerCase()}`;
+
+  return (
+    <div className="settings-row">
+      <label className="settings-label" htmlFor={inputId}>{label}</label>
+      <label className="settings-toggle" htmlFor={inputId}>
+        <input
+          id={inputId}
+          name={inputId}
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.currentTarget.checked)}
+        />
+        <span className="settings-toggle-track" />
+      </label>
+    </div>
   );
 }

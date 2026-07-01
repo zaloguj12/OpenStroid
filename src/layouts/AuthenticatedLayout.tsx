@@ -57,13 +57,8 @@ export function AuthenticatedLayout() {
       styles={{
         header: {
           backgroundColor: 'rgba(9, 10, 12, 0.96)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
           backdropFilter: 'blur(12px)',
-        },
-        main: {
-          minHeight: '100vh',
-          background:
-            'radial-gradient(900px 420px at 80% -10%, rgba(88,217,138,0.045), transparent 68%), linear-gradient(180deg, #090a0c 0%, #0f1013 100%)',
         },
       }}
     >
@@ -137,7 +132,7 @@ export function AuthenticatedLayout() {
         </nav>
       </Drawer>
 
-      <AppShell.Main>
+      <AppShell.Main className="openstroid-app-main">
         <main className="openstroid-main-inner">
           <Outlet />
         </main>

@@ -20,11 +20,13 @@ import type { ApiError, AuthCaptureDebugResponse } from '../types';
 interface AuthCaptureDebugPanelProps {
   title?: string;
   compact?: boolean;
+  variant?: 'default' | 'settings';
 }
 
 export function AuthCaptureDebugPanel({
   title = 'Captured upstream auth evidence',
   compact = false,
+  variant = 'default',
 }: AuthCaptureDebugPanelProps) {
   const [data, setData] = useState<AuthCaptureDebugResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +49,60 @@ export function AuthCaptureDebugPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  if (variant === 'settings') {
+    return (
+      <div className="settings-row settings-row--column">
+        <div className="settings-row-top">
+          <label className="settings-label">{title}</label>
+          <button type="button" className="settings-export-logs-btn" disabled={isLoading} onClick={() => void load()}>
+            <IconRefresh size={16} />
+            Refresh
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="settings-subtle-hint">Loading latest capture artifact…</div>
+        ) : null}
+
+        {!isLoading && error ? (
+          <div className="settings-subtle-hint" style={{ color: 'var(--warning)' }}>
+            {error}
+          </div>
+        ) : null}
+
+        {!isLoading && data ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+            <div className="settings-subtle-hint">
+              Capture ID: <code>{data.artifact.id}</code>
+            </div>
+            <div className="settings-subtle-hint">
+              Artifact: <code>{data.artifactPath ?? 'in-memory only'}</code>
+            </div>
+            <CopyButton value={JSON.stringify(data, null, 2)} timeout={1500}>
+              {({ copied, copy }) => (
+                <button type="button" className="settings-export-logs-btn" onClick={copy}>
+                  {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                  {copied ? 'Copied' : 'Copy JSON'}
+                </button>
+              )}
+            </CopyButton>
+            <pre
+              className="settings-path-value"
+              style={{
+                maxHeight: compact ? 320 : 480,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <Paper

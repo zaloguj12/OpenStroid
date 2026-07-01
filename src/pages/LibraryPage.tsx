@@ -27,7 +27,6 @@ import {
 } from '@mantine/core';
 import {
   IconAlertCircle,
-  IconBooks,
   IconBrandSteam,
   IconChevronDown,
   IconCloudDownload,
@@ -312,54 +311,43 @@ export function MyGamesPage() {
 
   return (
     <Box maw={1440} mx="auto">
-      <Group className="openstroid-page-head" justify="space-between" align="flex-start" gap="md">
-        <Group className="openstroid-title-lockup" gap="sm" wrap="nowrap">
-          <IconBooks className="openstroid-title-icon" size={26} />
-          <Stack gap={3} style={{ minWidth: 0 }}>
-            <Title order={2} fw={600}>My Games</Title>
-            <Text c="dimmed" size="sm">
-              {installedGames.length} games from your Boosteroid installed list.
-            </Text>
-          </Stack>
-        </Group>
-        <Group gap="xs">
-          <Button
-            component={Link}
-            to="/install"
-            variant="light"
-            color="brand"
-            size="sm"
-            leftSection={<IconCloudDownload size={16} />}
-          >
-            Install games
-          </Button>
-          <Menu position="bottom-end" shadow="lg">
-            <Menu.Target>
-              <Button
-                variant="light"
-                color="gray"
-                size="sm"
-                leftSection={<IconBrandSteam size={16} />}
-                rightSection={<IconChevronDown size={14} />}
-                loading={Boolean(syncingPlatform)}
-              >
-                Sync
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              {['steam', 'epic', 'battle-net'].map((platform) => (
-                <Menu.Item key={platform} onClick={() => void handleSync(platform)}>
-                  {platform}
-                </Menu.Item>
-              ))}
-            </Menu.Dropdown>
-          </Menu>
-          <Tooltip label="Refresh dashboard">
-            <ActionIcon variant="light" color="gray" size="lg" onClick={() => void fetchDashboard()}>
-              <IconRefresh size={18} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
+      <Group className="openstroid-page-actions" justify="flex-end" gap="xs" mb="md">
+        <Button
+          component={Link}
+          to="/install"
+          variant="light"
+          color="brand"
+          size="sm"
+          leftSection={<IconCloudDownload size={16} />}
+        >
+          Install games
+        </Button>
+        <Menu position="bottom-end" shadow="lg">
+          <Menu.Target>
+            <Button
+              variant="light"
+              color="gray"
+              size="sm"
+              leftSection={<IconBrandSteam size={16} />}
+              rightSection={<IconChevronDown size={14} />}
+              loading={Boolean(syncingPlatform)}
+            >
+              Sync
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {['steam', 'epic', 'battle-net'].map((platform) => (
+              <Menu.Item key={platform} onClick={() => void handleSync(platform)}>
+                {platform}
+              </Menu.Item>
+            ))}
+          </Menu.Dropdown>
+        </Menu>
+        <Tooltip label="Refresh dashboard">
+          <ActionIcon variant="light" color="gray" size="lg" onClick={() => void fetchDashboard()}>
+            <IconRefresh size={18} />
+          </ActionIcon>
+        </Tooltip>
       </Group>
 
       {loadState === 'loading' && <LibrarySkeleton />}

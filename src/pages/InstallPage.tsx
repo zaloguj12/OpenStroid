@@ -60,8 +60,6 @@ const PAGE_SIZE = 50;
 
 interface InstallPageProps {
   collectionName?: string;
-  title?: string;
-  description?: string;
   emptyTitle?: string;
 }
 
@@ -89,8 +87,6 @@ function facetId(value: unknown): string | number | null {
 
 export function InstallPage({
   collectionName = 'Install',
-  title = 'Install Games',
-  description = 'Search the Boosteroid install collection and add games to your OpenStroid library.',
   emptyTitle = 'No install games found',
 }: InstallPageProps = {}) {
   const [query, setQuery] = useState('');
@@ -240,23 +236,6 @@ export function InstallPage({
 
   return (
     <Box maw={1440} mx="auto">
-      <Group className="openstroid-page-head" justify="space-between" align="flex-start" gap="md">
-        <Group className="openstroid-title-lockup" gap="sm" wrap="nowrap">
-          <IconCloudDownload className="openstroid-title-icon" size={26} />
-          <Stack gap={3} style={{ minWidth: 0 }}>
-            <Title order={2} fw={600}>{title}</Title>
-            <Text c="dimmed" size="sm">
-              {description}
-            </Text>
-          </Stack>
-        </Group>
-        <Tooltip label="Refresh catalog">
-          <ActionIcon variant="light" color="gray" size="lg" onClick={() => void loadGames(debouncedQuery)}>
-            <IconRefresh size={18} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
-
       <Stack gap="lg">
         {error && (
           <Alert icon={<IconAlertCircle size={18} />} color="red" variant="light" title="Catalog failed">
@@ -296,17 +275,24 @@ export function InstallPage({
               w={{ base: '100%', xs: 150 }}
             />
           </Group>
-          <SegmentedControl
-            value={filter}
-            onChange={(value) => setFilter(value as FilterKey)}
-            data={[
-              { value: 'all', label: 'All' },
-              { value: 'not-installed', label: 'Available' },
-              { value: 'installed', label: 'Installed' },
-              { value: 'controller', label: 'Controller' },
-              { value: 'free', label: 'Free' },
-            ]}
-          />
+          <Group gap="sm" wrap="nowrap">
+            <SegmentedControl
+              value={filter}
+              onChange={(value) => setFilter(value as FilterKey)}
+              data={[
+                { value: 'all', label: 'All' },
+                { value: 'not-installed', label: 'Available' },
+                { value: 'installed', label: 'Installed' },
+                { value: 'controller', label: 'Controller' },
+                { value: 'free', label: 'Free' },
+              ]}
+            />
+            <Tooltip label="Refresh catalog">
+              <ActionIcon variant="light" color="gray" size="lg" onClick={() => void loadGames(debouncedQuery)}>
+                <IconRefresh size={18} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
 
         {loadState === 'loading' ? (
