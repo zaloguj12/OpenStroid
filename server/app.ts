@@ -809,8 +809,8 @@ export function createBridgeApp() {
         refreshToken: capture.bridgeSession.refreshToken,
         userData: capture.bridgeSession.userData,
         user: capture.bridgeSession.user,
-        sessionId: capture.bridgeSession.sessionId ?? null,
-        expiresAt: capture.bridgeSession.expiresAt ?? null,
+        sessionId: capture.bridgeSession.sessionId,
+        expiresAt: capture.bridgeSession.expiresAt,
         usesAndroidTVIdentity: Boolean(capture.bridgeSession.usesAndroidTVIdentity),
         existing: existingSession ?? capture.bridgeSession,
       });

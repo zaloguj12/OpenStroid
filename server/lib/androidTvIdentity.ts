@@ -2,6 +2,7 @@ import os from 'node:os';
 
 export const ANDROID_TV_CLIENT_ID = 6;
 export const ANDROID_TV_ENTRYPOINT_COOKIE = 'boosteroid_entrypoint_source=1;boosteroid_entrypoint_page=1';
+const PSEUDO_DEVICE_IDENTIFIER = 'OpenStroidDevice';
 
 function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -12,7 +13,7 @@ function deviceModel(): string {
 }
 
 function deviceIdentifier(): string {
-  return compact(os.hostname()) || 'OpenStroid';
+  return compact(PSEUDO_DEVICE_IDENTIFIER) || 'OpenStroid';
 }
 
 function systemVersion(): string {
