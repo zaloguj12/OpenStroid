@@ -49,15 +49,13 @@
 
 ## Overview
 
-OpenStroid is a desktop app for Boosteroid. One Electron window handles QR login, your game library, and WebRTC streaming — no separate server to install or run.
+OpenStroid is a desktop app for Boosteroid with QR login, your game library, and WebRTC streaming.
 
 ## Downloads
 
-Grab the latest desktop build from [GitHub Releases](https://github.com/OpenCloudGaming/OpenStroid/releases) when available. Until packaged releases ship, build and run the client locally — see [Development](#development) below.
+Download the latest build from [GitHub Releases](https://github.com/OpenCloudGaming/OpenStroid/releases).
 
 ## Development
-
-### Getting started
 
 ```bash
 bun install
@@ -65,56 +63,30 @@ cp .env.example .env
 bun run dev
 ```
 
-What runs in development:
+### QR login
 
-- The OpenStroid desktop app (Electron + UI + embedded backend on one port)
-
-Use `bun run dev:backend` only when debugging the embedded backend without launching the app window.
-
-### QR login flow
-
-1. Open OpenStroid Desktop and go to the login screen.
-2. Scan the QR code with your phone or the Boosteroid app, or click **Login to Boosteroid** to finish in your browser.
-3. After Boosteroid verifies the QR code, OpenStroid establishes a local session.
-4. The app transitions into the game library.
+1. Open OpenStroid and go to the login screen.
+2. Scan the QR code or click **Login to Boosteroid** to finish in your browser.
+3. After Boosteroid verifies the QR code, the app opens your game library.
 
 ### Scripts
 
 | Command | Description |
 |---|---|
-| `bun run dev` | Launch the OpenStroid desktop app |
-| `bun run dev:web` | Start the UI only (browser preview) |
-| `bun run dev:backend` | Run the embedded backend without the app window (debug) |
-| `bun run build` | Type-check and build the app |
-| `bun run start` | Run the built desktop app |
-| `bun run start:backend` | Run the built embedded backend only (debug) |
-| `bun run preview` | Preview the frontend build |
+| `bun run dev` | Launch the desktop app |
+| `bun run build` | Build the app |
+| `bun run start` | Run the built app |
 | `bun run lint` | Run ESLint |
 
-### Environment variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `VITE_API_BASE_URL` | *(empty)* | Renderer API origin. Leave empty in local Electron dev so the renderer keeps using first-party routes. Never point this at a Boosteroid origin. |
-| `SERVER_PORT` | `3001` | Internal port used by the embedded app backend in dev. |
-| `UPSTREAM_BASE_URL` | `https://cloud.boosteroid.com` | Upstream Boosteroid base URL. |
-| `SESSION_SECRET` | `openstroid-development-session-secret` | Secret used to encrypt/authenticate the OpenStroid session cookie. Replace in production. |
-| `SESSION_COOKIE_NAME` | `openstroid_session` | First-party auth cookie name. |
-| `SESSION_TTL_SECONDS` | `2592000` | Cookie/session lifetime in seconds. |
-| `COOKIE_SECURE` | `false` in dev, `true` in production | Whether to mark the auth cookie as `Secure`. |
-| `APP_ORIGIN` | *(unset)* | Optional allowed renderer origin for split dev setups. |
-
-## Repository Layout
+## Repository layout
 
 ```text
 .
-├── electron/                  Electron main process and app window
-├── server/                    Embedded backend (auth, library proxy, stream launch)
-├── src/                       Desktop UI, auth, and streaming client
-├── public/                    Static assets and favicon
-├── tools/                     Dev/build helper scripts
-├── LICENSE                    Project license
-└── logo.svg                   Project logo
+├── electron/     Electron main process
+├── server/       Auth, library proxy, stream launch
+├── src/          Desktop UI and streaming client
+├── public/       Static assets
+└── tools/        Dev scripts
 ```
 
 ## Contributing
