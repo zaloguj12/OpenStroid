@@ -7,12 +7,12 @@
   "scripts": {
     "dev": "node tools/run-electron-dev.mjs",
     "dev:web": "vite",
-    "dev:bridge": "tsx watch server/index.ts",
+    "dev:backend": "tsx watch server/index.ts",
     "build": "tsc -b && tsc -p tsconfig.server.json && tsc -p tsconfig.electron.json && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "electron build/electron/electron/main.js",
-    "start:bridge": "node build/server/server/index.js",
+    "start:backend": "node build/server/server/index.js",
     "postinstall": "node tools/fix-electron-install.cjs"
   },
   "dependencies": {

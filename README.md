@@ -49,7 +49,7 @@
 
 ## Overview
 
-OpenStroid is a community-built Electron app for playing Boosteroid from an open-source desktop client. The Electron shell owns a local server on `http://127.0.0.1:3001`, handles Boosteroid QR login, proxies normalized auth and library routes, and renders the React desktop UI with integrated WebRTC streaming.
+OpenStroid is a desktop app for Boosteroid. One Electron window handles QR login, your game library, and WebRTC streaming — no separate server to install or run.
 
 ## Downloads
 
@@ -67,10 +67,9 @@ bun run dev
 
 What runs in development:
 
-- Electron desktop shell with embedded Vite dev middleware
-- Local server: `http://127.0.0.1:3001`
+- The OpenStroid desktop app (Electron + UI + embedded backend on one port)
 
-Use `bun run dev:bridge` only if you need the local server without launching Electron.
+Use `bun run dev:backend` only when debugging the embedded backend without launching the app window.
 
 ### QR login flow
 
@@ -83,12 +82,12 @@ Use `bun run dev:bridge` only if you need the local server without launching Ele
 
 | Command | Description |
 |---|---|
-| `bun run dev` | Start the Electron desktop shell with live dev server |
-| `bun run dev:web` | Start the Vite renderer only |
-| `bun run dev:bridge` | Run the local server without Electron |
-| `bun run build` | Type-check and build renderer, server, and Electron main process |
-| `bun run start` | Run the built Electron desktop app |
-| `bun run start:bridge` | Run only the built local server |
+| `bun run dev` | Launch the OpenStroid desktop app |
+| `bun run dev:web` | Start the UI only (browser preview) |
+| `bun run dev:backend` | Run the embedded backend without the app window (debug) |
+| `bun run build` | Type-check and build the app |
+| `bun run start` | Run the built desktop app |
+| `bun run start:backend` | Run the built embedded backend only (debug) |
 | `bun run preview` | Preview the frontend build |
 | `bun run lint` | Run ESLint |
 
@@ -97,21 +96,21 @@ Use `bun run dev:bridge` only if you need the local server without launching Ele
 | Variable | Default | Description |
 |---|---|---|
 | `VITE_API_BASE_URL` | *(empty)* | Renderer API origin. Leave empty in local Electron dev so the renderer keeps using first-party routes. Never point this at a Boosteroid origin. |
-| `SERVER_PORT` | `3001` | Local Electron server port. |
+| `SERVER_PORT` | `3001` | Internal port used by the embedded app backend in dev. |
 | `UPSTREAM_BASE_URL` | `https://cloud.boosteroid.com` | Upstream Boosteroid base URL. |
 | `SESSION_SECRET` | `openstroid-development-session-secret` | Secret used to encrypt/authenticate the OpenStroid session cookie. Replace in production. |
 | `SESSION_COOKIE_NAME` | `openstroid_session` | First-party auth cookie name. |
 | `SESSION_TTL_SECONDS` | `2592000` | Cookie/session lifetime in seconds. |
 | `COOKIE_SECURE` | `false` in dev, `true` in production | Whether to mark the auth cookie as `Secure`. |
-| `APP_ORIGIN` | *(unset)* | Optional allowed renderer/browser origin if frontend and server are split. |
+| `APP_ORIGIN` | *(unset)* | Optional allowed renderer origin for split dev setups. |
 
 ## Repository Layout
 
 ```text
 .
-├── electron/                  Electron main process, window creation, server startup
-├── server/                    Local HTTP server, session handling, upstream client
-├── src/                       React desktop UI, auth, streaming, and API client
+├── electron/                  Electron main process and app window
+├── server/                    Embedded backend (auth, library proxy, stream launch)
+├── src/                       Desktop UI, auth, and streaming client
 ├── public/                    Static assets and favicon
 ├── tools/                     Dev/build helper scripts
 ├── LICENSE                    Project license

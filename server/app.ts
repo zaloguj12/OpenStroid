@@ -823,7 +823,7 @@ export async function createBridgeApp() {
   }
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, desktopBridge: true });
+    res.json({ ok: true, app: 'openstroid' });
   });
 
   app.post('/auth/login/qr/start', async (req, res, next) => {

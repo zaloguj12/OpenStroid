@@ -597,7 +597,7 @@ function SettingsDrawer({
         <Switch
           checked={micEnabled}
           onChange={(event) => onMicChange(event.currentTarget.checked)}
-          label="Microphone bridge"
+          label="Microphone"
           thumbIcon={micEnabled ? <IconMicrophone size={12} /> : <IconMicrophoneOff size={12} />}
         />
         <Tooltip label="Paste clipboard into the remote session">

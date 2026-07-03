@@ -353,7 +353,7 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
                       onChange={(checked) => updateStream({ fsrEnabled: checked })}
                     />
                     <StreamToggle
-                      label="Microphone bridge"
+                      label="Microphone"
                       checked={settings.stream.micEnabled}
                       onChange={(checked) => updateStream({ micEnabled: checked })}
                     />
