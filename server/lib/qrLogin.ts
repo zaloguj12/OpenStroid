@@ -96,6 +96,46 @@ function createUserFallback(userData: unknown): Record<string, unknown> | undefi
   if (typeof candidate.id !== 'undefined' || typeof candidate.email === 'string') {
     return candidate;
   }
+  if (candidate.user && typeof candidate.user === 'object') {
+    return unwrapRecord(candidate.user);
+  }
+  return undefined;
+}
+
+function extractUserFromAccessToken(accessToken: string): Record<string, unknown> | undefined {
+  const token = accessToken.replace(/^Bearer\s+/i, '').trim();
+  const parts = token.split('.');
+  if (parts.length < 2) return undefined;
+
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as Record<string, unknown>;
+    const user: Record<string, unknown> = {};
+    if (payload.sub !== undefined) user.id = payload.sub;
+    if (typeof payload.email === 'string') user.email = payload.email;
+    if (typeof payload.name === 'string') user.name = payload.name;
+    if (typeof user.id !== 'undefined' || typeof user.email === 'string') {
+      return user;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function extractUserFromQrPayload(object: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (object.user && typeof object.user === 'object') {
+    return unwrapRecord(object.user);
+  }
+
+  const fromUserData = createUserFallback(object.user_data);
+  if (fromUserData) return fromUserData;
+
+  const accessToken = stringOrNull(object.access_token);
+  if (accessToken) {
+    return extractUserFromAccessToken(accessToken);
+  }
+
   return undefined;
 }
 
@@ -109,9 +149,7 @@ function createQRCodeSessionFromPayload(payload: unknown): BridgeSession {
   }
 
   const userData = object.user_data;
-  const user = object.user && typeof object.user === 'object'
-    ? unwrapRecord(object.user)
-    : createUserFallback(userData);
+  const user = extractUserFromQrPayload(object);
 
   return createSession({
     accessToken,

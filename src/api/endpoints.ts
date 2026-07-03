@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { API_CONFIG } from './config';
+import { writeSessionHandoff } from '../auth/storage';
 import type {
   AuthCaptureDebugResponse,
   AuthSession,
@@ -16,9 +17,15 @@ import type {
 } from '../types';
 
 function extractSession(data: Record<string, unknown>): AuthSession {
+  const sessionHandoff = typeof data.sessionHandoff === 'string' ? data.sessionHandoff : null;
+  if (sessionHandoff) {
+    writeSessionHandoff(sessionHandoff);
+  }
+
   return {
     authenticated: Boolean(data.authenticated),
     user: (data.user as User | null | undefined) ?? null,
+    sessionHandoff,
   };
 }
 

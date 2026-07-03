@@ -9,7 +9,7 @@ interface AuthState {
 }
 
 export interface AuthContextValue extends AuthState {
-  refreshSession: () => Promise<void>;
+  refreshSession: () => Promise<boolean>;
   logout: () => Promise<void>;
 }
 

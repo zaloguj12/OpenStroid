@@ -7,7 +7,7 @@ import {
 import type { User } from '../types';
 import * as api from '../api';
 import { AuthContext } from './context';
-import { clearLegacyAuthStorage } from './storage';
+import { clearAuthStorage, clearLegacyAuthStorage } from './storage';
 
 interface AuthState {
   user: User | null;
@@ -35,16 +35,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const refreshSession = useCallback(async () => {
+  const refreshSession = useCallback(async (): Promise<boolean> => {
     setState((current) => ({ ...current, isLoading: true }));
     clearLegacyAuthStorage();
 
     try {
       const session = await api.getSession();
       applySession(session.user);
+      return session.authenticated || Boolean(session.user);
     } catch {
-      clearLegacyAuthStorage();
+      clearAuthStorage();
       applySession(null);
+      return false;
     }
   }, [applySession]);
 
@@ -57,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      clearLegacyAuthStorage();
+      clearAuthStorage();
       applySession(null);
     };
 
@@ -71,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout();
     } finally {
-      clearLegacyAuthStorage();
+      clearAuthStorage();
       applySession(null);
     }
   }, [applySession]);

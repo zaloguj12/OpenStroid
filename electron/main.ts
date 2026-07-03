@@ -6,7 +6,6 @@ import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import { startBridgeServer } from '../server/app.js';
 import { serverConfig } from '../server/config.js';
 
-const DEV_RENDERER_URL = process.env.ELECTRON_RENDERER_URL ?? 'http://127.0.0.1:3000';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const preloadPath = path.join(__dirname, 'preload.cjs');
@@ -137,15 +136,11 @@ function createMainWindow() {
     return { action: 'deny' };
   });
 
-  if (app.isPackaged) {
-    void window.loadURL(`http://127.0.0.1:${bridgePort}`);
-  } else {
-    void window.loadURL(DEV_RENDERER_URL);
-  }
+  void window.loadURL(`http://127.0.0.1:${bridgePort}`);
 }
 
 async function bootstrapDesktopApp() {
-  const server = startBridgeServer(serverConfig.port);
+  const server = await startBridgeServer(serverConfig.port);
   const address = server.address();
   if (address && typeof address !== 'string') {
     bridgePort = (address as AddressInfo).port;

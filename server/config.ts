@@ -21,6 +21,7 @@ const projectRoot = configDir.endsWith(buildServerSuffix)
 export const serverConfig = {
   nodeEnv,
   isProduction: nodeEnv === 'production',
+  projectRoot,
   port: parseNumber(process.env.PORT ?? process.env.SERVER_PORT, 3001),
   upstreamBaseUrl: process.env.UPSTREAM_BASE_URL ?? 'https://cloud.boosteroid.com',
   sessionCookieName: process.env.SESSION_COOKIE_NAME ?? 'openstroid_session',

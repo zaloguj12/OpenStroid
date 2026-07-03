@@ -1,5 +1,5 @@
 import { Menu, UnstyledButton } from '@mantine/core';
-import { IconLogout, IconUser, IconChevronDown, IconPlugConnected, IconSettings } from '@tabler/icons-react';
+import { IconLogout, IconUser, IconChevronDown, IconSettings } from '@tabler/icons-react';
 import { NavLink as RouterNavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
 
@@ -10,11 +10,6 @@ export function AppHeader() {
 
   return (
     <div className="openstroid-header-right">
-      <button type="button" className="openstroid-header-chip" aria-label="Bridge status">
-        <IconPlugConnected size={13} />
-        Bridge online
-      </button>
-
       <Menu shadow="md" width={200} position="bottom-end" withArrow>
         <Menu.Target>
           <UnstyledButton className="openstroid-user-button" aria-label="Open account menu">

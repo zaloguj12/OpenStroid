@@ -9,6 +9,7 @@ export interface User {
 export interface AuthSession {
   authenticated: boolean;
   user: User | null;
+  sessionHandoff?: string | null;
 }
 
 export type LoginCaptureStatus =
@@ -39,6 +40,7 @@ export interface QRCodeLoginSessionStatus {
   errors: string[];
   user: User | null;
   sessionEstablished: boolean;
+  sessionHandoff?: string | null;
   pollIntervalMs: number;
 }
 

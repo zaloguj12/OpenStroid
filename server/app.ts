@@ -3,13 +3,8 @@ import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { serverConfig } from './config.js';
-import {
-  authCaptureManager,
-  type CaptureMethod,
-  type ExtensionPairingRequest,
-} from './lib/authCapture.js';
 import { qrCodeLoginManager, type QRCodeLoginArtifact } from './lib/qrLogin.js';
-import { clearSession, createSession, readSession, writeSession } from './lib/session.js';
+import { clearSession, createSession, normalizeSessionMetadata, readSession, serializeSessionHandoff, writeSession, type BridgeSession } from './lib/session.js';
 import {
   getActiveSubscriptionsUpstream,
   dequeueStreamingSessionUpstream,
@@ -46,7 +41,6 @@ import {
   uninstallApplicationUpstream,
   withRefresh,
 } from './lib/upstream.js';
-import type { BridgeSession } from './lib/session.js';
 
 interface StreamLaunchResult {
   appId: number;
@@ -89,7 +83,7 @@ interface RealtimeQueueListener {
   close(): void;
 }
 
-export function createBridgeApp() {
+export async function createBridgeApp() {
   const app = express();
 
   app.set('trust proxy', 1);
@@ -97,17 +91,13 @@ export function createBridgeApp() {
   app.use(cookieParser());
 
   app.use((req, res, next) => {
-    const origin = req.header('origin');
-    if (origin?.startsWith('chrome-extension://')) {
-      res.header('Access-Control-Allow-Origin', origin);
-      res.header('Vary', 'Origin');
-    } else if (serverConfig.appOrigin) {
+    if (serverConfig.appOrigin) {
       res.header('Access-Control-Allow-Origin', serverConfig.appOrigin);
       res.header('Vary', 'Origin');
     }
 
     res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, X-OpenStroid-Session');
     res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
 
     if (req.method === 'OPTIONS') {
@@ -118,11 +108,22 @@ export function createBridgeApp() {
     next();
   });
 
-  function sendSession(res: Response, user: Record<string, unknown> | null) {
+  function sendSession(
+    res: Response,
+    user: Record<string, unknown> | null,
+    session: BridgeSession | null = null,
+  ) {
     res.json({
       authenticated: Boolean(user),
       user,
+      sessionHandoff: session ? serializeSessionHandoff(session) : null,
     });
+  }
+
+  function sendStoredSession(res: Response, session: BridgeSession): boolean {
+    if (!session.user) return false;
+    sendSession(res, session.user, session);
+    return true;
   }
 
   function requireSession(req: Request, res: Response) {
@@ -747,115 +748,51 @@ export function createBridgeApp() {
     };
   }
 
-  function redactDebugValue(key: string, value: unknown): unknown {
-    const normalizedKey = key.toLowerCase();
-    if (
-      normalizedKey.includes('token') ||
-      normalizedKey.includes('cookie') ||
-      normalizedKey.includes('authorization') ||
-      normalizedKey.includes('session') ||
-      normalizedKey.includes('auth') ||
-      normalizedKey === 'value'
-    ) {
-      return typeof value === 'string' ? `[redacted:${value.length}]` : '[redacted]';
+  async function resolveBridgeSessionUser(
+    bridgeSession: BridgeSession,
+    userPayload: Record<string, unknown> | null,
+  ): Promise<BridgeSession> {
+    if (bridgeSession.user) return bridgeSession;
+
+    const upstreamUser = await getUpstreamUser(bridgeSession).catch(() => null);
+    if (upstreamUser) {
+      return { ...bridgeSession, user: upstreamUser };
     }
 
-    if (
-      normalizedKey.includes('email') ||
-      normalizedKey.includes('phone') ||
-      normalizedKey === 'ip' ||
-      normalizedKey.includes('address')
-    ) {
-      return typeof value === 'string' ? '[redacted]' : value;
+    if (userPayload) {
+      return { ...bridgeSession, user: userPayload };
     }
 
-    return value;
+    return bridgeSession;
   }
 
-  function redactDebugPayload(value: unknown, key = ''): unknown {
-    const redacted = redactDebugValue(key, value);
-    if (redacted !== value) {
-      return redacted;
-    }
-
-    if (Array.isArray(value)) {
-      return value.map((item) => redactDebugPayload(item));
-    }
-
-    if (value && typeof value === 'object') {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([entryKey, entryValue]) => [
-          entryKey,
-          redactDebugPayload(entryValue, entryKey),
-        ]),
-      );
-    }
-
-    return value;
-  }
-
-  function sendCaptureStatus(req: Request, res: Response, captureId?: string) {
-    const capture = authCaptureManager.getStatus(captureId);
-    if (!capture) {
-      res.status(404).json({ message: 'No login capture session found.' });
-      return;
-    }
-
-    let sessionEstablished = false;
-    if (capture.status === 'succeeded' && capture.bridgeSession) {
-      const existingSession = readSession(req);
-      const nextSession = createSession({
-        accessToken: capture.bridgeSession.accessToken,
-        refreshToken: capture.bridgeSession.refreshToken,
-        userData: capture.bridgeSession.userData,
-        user: capture.bridgeSession.user,
-        sessionId: capture.bridgeSession.sessionId,
-        expiresAt: capture.bridgeSession.expiresAt,
-        usesAndroidTVIdentity: Boolean(capture.bridgeSession.usesAndroidTVIdentity),
-        existing: existingSession ?? capture.bridgeSession,
-      });
-      writeSession(res, nextSession);
-      sessionEstablished = true;
-    }
-
-    res.json({
-      id: capture.id,
-      status: capture.status,
-      startedAt: capture.startedAt,
-      updatedAt: capture.updatedAt,
-      completedAt: capture.completedAt,
-      timeoutAt: capture.timeoutAt,
-      loginUrl: capture.loginUrl,
-      finalUrl: capture.finalUrl,
-      errors: capture.errors,
-      eventCount: capture.eventCount,
-      user: capture.userPayload,
-      captureMethod: capture.captureMethod,
-      diagnostics: capture.diagnostics,
-      sessionEstablished,
-    });
-  }
-
-  function serializeQRCodeStatus(
+  async function serializeQRCodeStatus(
     req: Request,
     res: Response,
     qrSession: QRCodeLoginArtifact,
   ) {
     let sessionEstablished = false;
+    let userPayload = qrSession.userPayload;
+    let sessionHandoff: string | null = null;
+
     if (qrSession.status === 'succeeded' && qrSession.bridgeSession) {
+      const bridgeSession = await resolveBridgeSessionUser(qrSession.bridgeSession, qrSession.userPayload);
       const existingSession = readSession(req);
+      const metadata = normalizeSessionMetadata(bridgeSession);
       const nextSession = createSession({
-        accessToken: qrSession.bridgeSession.accessToken,
-        refreshToken: qrSession.bridgeSession.refreshToken,
-        userData: qrSession.bridgeSession.userData,
-        user: qrSession.bridgeSession.user,
-        sessionId: qrSession.bridgeSession.sessionId,
-        expiresAt: qrSession.bridgeSession.expiresAt,
-        usesAndroidTVIdentity: qrSession.bridgeSession.usesAndroidTVIdentity,
-        existing: existingSession ?? qrSession.bridgeSession,
+        accessToken: bridgeSession.accessToken,
+        refreshToken: bridgeSession.refreshToken,
+        userData: bridgeSession.userData,
+        user: bridgeSession.user,
+        ...metadata,
+        existing: existingSession ?? bridgeSession,
       });
       writeSession(res, nextSession);
-      sessionEstablished = true;
+      sessionEstablished = Boolean(nextSession.user);
+      userPayload = (nextSession.user as Record<string, unknown> | undefined) ?? userPayload;
+      if (sessionEstablished) {
+        sessionHandoff = serializeSessionHandoff(nextSession);
+      }
     }
 
     res.json({
@@ -868,20 +805,21 @@ export function createBridgeApp() {
       validationUrl: qrSession.validationUrl,
       qrCodeDataUrl: qrSession.qrCodeDataUrl,
       errors: qrSession.errors,
-      user: qrSession.userPayload,
+      user: userPayload,
       sessionEstablished,
+      sessionHandoff,
       pollIntervalMs: qrSession.pollIntervalMs,
     });
   }
 
-  function sendQRCodeStatus(req: Request, res: Response, qrSessionId?: string) {
+  async function sendQRCodeStatus(req: Request, res: Response, qrSessionId?: string) {
     const qrSession = qrCodeLoginManager.getStatus(qrSessionId);
     if (!qrSession) {
       res.status(404).json({ message: 'No QR login session found.' });
       return;
     }
 
-    serializeQRCodeStatus(req, res, qrSession);
+    await serializeQRCodeStatus(req, res, qrSession);
   }
 
   app.get('/health', (_req, res) => {
@@ -893,18 +831,26 @@ export function createBridgeApp() {
       const qrSession = await qrCodeLoginManager.start();
       clearSession(res);
       res.status(202);
-      serializeQRCodeStatus(req, res, qrSession);
+      await serializeQRCodeStatus(req, res, qrSession);
     } catch (error) {
       next(error);
     }
   });
 
-  app.get('/auth/login/qr/status', (req, res) => {
-    sendQRCodeStatus(req, res);
+  app.get('/auth/login/qr/status', async (req, res, next) => {
+    try {
+      await sendQRCodeStatus(req, res);
+    } catch (error) {
+      next(error);
+    }
   });
 
-  app.get('/auth/login/qr/status/:id', (req, res) => {
-    sendQRCodeStatus(req, res, req.params.id);
+  app.get('/auth/login/qr/status/:id', async (req, res, next) => {
+    try {
+      await sendQRCodeStatus(req, res, req.params.id);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post('/auth/login/qr/cancel', async (req, res, next) => {
@@ -916,96 +862,10 @@ export function createBridgeApp() {
         return;
       }
 
-      clearSession(res);
-      serializeQRCodeStatus(req, res, qrSession);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.post('/auth/login/start', async (req, res, next) => {
-    try {
-      const requestedMethod = req.body?.method;
-      if (requestedMethod && requestedMethod !== 'extension') {
-        res.status(400).json({
-          message: 'OpenStroid login now uses the Chrome extension capture flow. Browser automation login is disabled.',
-        });
-        return;
+      if (qrSession.status !== 'succeeded') {
+        clearSession(res);
       }
-
-      const method: CaptureMethod = 'extension';
-      const capture = await authCaptureManager.start(method);
-      clearSession(res);
-      res.status(202).json(capture);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.get('/auth/login/status', (req, res) => {
-    sendCaptureStatus(req, res);
-  });
-
-  app.get('/auth/login/status/:id', (req, res) => {
-    sendCaptureStatus(req, res, req.params.id);
-  });
-
-  app.post('/auth/login/cancel', async (req, res, next) => {
-    try {
-      const captureId = typeof req.body?.id === 'string' ? req.body.id : undefined;
-      const capture = await authCaptureManager.cancel(captureId);
-      if (!capture) {
-        res.status(404).json({ message: 'No active login capture session found.' });
-        return;
-      }
-
-      clearSession(res);
-      res.json({
-        id: capture.id,
-        status: capture.status,
-        startedAt: capture.startedAt,
-        updatedAt: capture.updatedAt,
-        completedAt: capture.completedAt,
-        timeoutAt: capture.timeoutAt,
-        loginUrl: capture.loginUrl,
-        finalUrl: capture.finalUrl,
-        errors: capture.errors,
-        eventCount: capture.eventCount,
-        user: capture.userPayload,
-        captureMethod: capture.captureMethod,
-        sessionEstablished: false,
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.post('/auth/extension/active', (req, res) => {
-    const body = req.body as ExtensionPairingRequest | undefined;
-    const pairingCode = typeof body?.pairingCode === 'string' ? body.pairingCode : '';
-    if (!pairingCode) {
-      res.status(400).json({ message: 'Extension pairing code is required.' });
-      return;
-    }
-
-    const active = authCaptureManager.getActiveExtensionSession(pairingCode);
-    if (!active) {
-      res.status(404).json({ message: 'No active extension capture session for that pairing code.' });
-      return;
-    }
-
-    res.json(active);
-  });
-
-  app.post('/auth/extension/capture', async (req, res, next) => {
-    try {
-      const artifact = await authCaptureManager.ingestExtensionCapture(req.body);
-      res.status(202).json({
-        id: artifact.id,
-        status: artifact.status,
-        captureMethod: artifact.captureMethod,
-        completedAt: artifact.completedAt,
-      });
+      await serializeQRCodeStatus(req, res, qrSession);
     } catch (error) {
       next(error);
     }
@@ -1046,36 +906,15 @@ export function createBridgeApp() {
       });
 
       writeSession(res, nextSession);
-      sendSession(res, refreshed.result);
+      sendSession(res, refreshed.result, nextSession);
     } catch (error) {
-      if (isCookieAuthToken(session.accessToken) && session.user) {
-        sendSession(res, session.user);
+      if (sendStoredSession(res, session)) {
         return;
       }
 
       clearSession(res);
       next(error);
     }
-  });
-
-  app.get('/auth/debug/capture', (req, res) => {
-    const session = requireSession(req, res);
-    if (!session) return;
-
-    const { artifact, path: artifactPath } = authCaptureManager.getLatestArtifact();
-    if (!artifact) {
-      res.status(404).json({ message: 'No auth capture artifact available yet.' });
-      return;
-    }
-
-    res.json({
-      artifact: redactDebugPayload(artifact),
-      artifactPath,
-      requestedBy: {
-        email: session.user?.email ? '[redacted]' : null,
-        updatedAt: session.updatedAt,
-      },
-    });
   });
 
   app.get('/me', async (req, res, next) => {
@@ -1095,7 +934,7 @@ export function createBridgeApp() {
       writeSession(res, nextSession);
       res.json({ user: refreshed.result });
     } catch (error) {
-      if (isCookieAuthToken(session.accessToken) && session.user) {
+      if (session.user) {
         res.json({ user: session.user });
         return;
       }
@@ -1603,11 +1442,19 @@ export function createBridgeApp() {
   });
 
   const indexFile = path.join(serverConfig.distDir, 'index.html');
-  if (fs.existsSync(indexFile)) {
+  if (serverConfig.isProduction && fs.existsSync(indexFile)) {
     app.use(express.static(serverConfig.distDir));
     app.get(/.*/, (_req, res) => {
       res.sendFile(indexFile);
     });
+  } else if (!serverConfig.isProduction) {
+    const { createServer } = await import('vite');
+    const vite = await createServer({
+      configFile: path.join(serverConfig.projectRoot, 'vite.config.ts'),
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
   }
 
   app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
@@ -1622,9 +1469,9 @@ export function createBridgeApp() {
   return app;
 }
 
-export function startBridgeServer(port = serverConfig.port) {
-  const app = createBridgeApp();
+export async function startBridgeServer(port = serverConfig.port) {
+  const app = await createBridgeApp();
   return app.listen(port, '127.0.0.1', () => {
-    console.log(`OpenStroid desktop bridge listening on http://127.0.0.1:${port}`);
+    console.log(`OpenStroid listening on http://127.0.0.1:${port}`);
   });
 }

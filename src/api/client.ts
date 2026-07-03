@@ -1,4 +1,5 @@
 import axios, { type AxiosError } from 'axios';
+import { readSessionHandoff } from '../auth/storage';
 import { API_CONFIG } from './config';
 
 export const apiClient = axios.create({
@@ -11,18 +12,23 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
+apiClient.interceptors.request.use((config) => {
+  const handoff = readSessionHandoff();
+  if (handoff) {
+    config.headers.set('X-OpenStroid-Session', handoff);
+  }
+  return config;
+});
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const requestUrl = error.config?.url ?? '';
     const isLoginStatusRequest =
-      requestUrl === API_CONFIG.endpoints.loginStatus ||
-      requestUrl.startsWith(`${API_CONFIG.endpoints.loginStatus}/`) ||
       requestUrl === API_CONFIG.endpoints.qrLoginStatus ||
       requestUrl.startsWith(`${API_CONFIG.endpoints.qrLoginStatus}/`);
     const shouldBroadcastUnauthorized =
       error.response?.status === 401 &&
-      requestUrl !== API_CONFIG.endpoints.loginStart &&
       requestUrl !== API_CONFIG.endpoints.qrLoginStart &&
       !isLoginStatusRequest &&
       requestUrl !== API_CONFIG.endpoints.session;

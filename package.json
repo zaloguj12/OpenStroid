@@ -5,9 +5,8 @@
   "description": "Open-source cloud gaming client",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n web,electron \"bun run dev:web\" \"bun run dev:electron\"",
+    "dev": "node tools/run-electron-dev.mjs",
     "dev:web": "vite",
-    "dev:electron": "node tools/run-electron-dev.mjs",
     "dev:bridge": "tsx watch server/index.ts",
     "build": "tsc -b && tsc -p tsconfig.server.json && tsc -p tsconfig.electron.json && vite build",
     "lint": "eslint .",

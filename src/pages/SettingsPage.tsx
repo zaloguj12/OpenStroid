@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  AlertCircle,
   Check,
-  Copy,
   Gauge,
   HardDrive,
   LogOut,
   Monitor,
-  Plug,
   RefreshCcw,
   RotateCcw,
   Search,
@@ -17,10 +14,8 @@ import {
   Wifi,
   X,
 } from 'lucide-react';
-import { AuthCaptureDebugPanel } from '../components/AuthCaptureDebugPanel';
 import { useAuth } from '../auth';
 import {
-  DEFAULT_SETTINGS,
   readAppSettings,
   resetAppSettings,
   saveAppSettings,
@@ -35,9 +30,7 @@ import {
   STREAM_RESOLUTION_OPTIONS,
 } from '../stream/streamOptions';
 
-const EXTENSION_PATH = 'C:\\Users\\Zortos\\Projects\\OpenStroid\\extension\\openstroid-capture';
-
-type SettingsSectionId = 'account' | 'bridge' | 'stream' | 'diagnostics';
+type SettingsSectionId = 'account' | 'stream';
 
 const SETTINGS_NAV_GROUPS: Array<{
   label: string;
@@ -60,13 +53,6 @@ const SETTINGS_NAV_GROUPS: Array<{
       { id: 'stream', label: 'Stream', icon: <Wifi size={15} />, keywords: ['quality', 'resolution', 'encoding', 'codec', 'av1', 'h264', 'fps', 'bitrate', 'volume', 'audio', 'fsr', 'microphone', 'stats'] },
     ],
   },
-  {
-    label: 'App',
-    items: [
-      { id: 'bridge', label: 'Bridge', icon: <Plug size={15} />, keywords: ['extension', 'url', 'health', 'chrome'] },
-      { id: 'diagnostics', label: 'Diagnostics', icon: <AlertCircle size={15} />, keywords: ['debug', 'capture', 'logs'] },
-    ],
-  },
 ];
 
 function updateStreamSettings(settings: AppSettings, patch: Partial<StreamDefaults>): AppSettings {
@@ -79,12 +65,6 @@ function updateStreamSettings(settings: AppSettings, patch: Partial<StreamDefaul
   };
 }
 
-function bridgeBadgeClass(status: 'checking' | 'online' | 'offline'): string {
-  if (status === 'online') return 'settings-inline-badge settings-inline-badge--online';
-  if (status === 'offline') return 'settings-inline-badge settings-inline-badge--offline';
-  return 'settings-inline-badge settings-inline-badge--checking';
-}
-
 interface SettingsPageProps {
   onClose: () => void;
 }
@@ -94,27 +74,8 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
   const [settings, setSettings] = useState<AppSettings>(() => readAppSettings());
   const [savedIndicator, setSavedIndicator] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
-  const [bridgeStatus, setBridgeStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('stream');
   const [settingsSearch, setSettingsSearch] = useState('');
-
-  const checkBridge = useCallback(async () => {
-    setBridgeStatus('checking');
-    try {
-      const response = await fetch('/health');
-      const payload = await response.json().catch(() => null);
-      setBridgeStatus(response.ok && payload?.desktopBridge ? 'online' : 'offline');
-    } catch {
-      setBridgeStatus('offline');
-    }
-  }, []);
-
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      void checkBridge();
-    }, 0);
-    return () => window.clearTimeout(handle);
-  }, [checkBridge]);
 
   const flashSaved = useCallback((message?: string) => {
     if (message) setStatusMessage(message);
@@ -138,15 +99,6 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
     const defaults = resetAppSettings();
     setSettings(defaults);
     flashSaved('Defaults restored');
-  }, [flashSaved]);
-
-  const copyExtensionPath = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(EXTENSION_PATH);
-      flashSaved('Path copied');
-    } catch {
-      flashSaved('Copy failed');
-    }
   }, [flashSaved]);
 
   const navigateSettings = useCallback((section: SettingsSectionId) => {
@@ -192,9 +144,7 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
 
   const hasVisibleSections =
     sectionVisible('stream')
-    || sectionVisible('account')
-    || sectionVisible('bridge')
-    || sectionVisible('diagnostics');
+    || sectionVisible('account');
 
   return (
     <>
@@ -454,62 +404,6 @@ export function SettingsPage({ onClose }: SettingsPageProps) {
                       </div>
                     </div>
                   </div>
-                </SettingSection>
-              )}
-
-              {sectionVisible('bridge') && (
-                <SettingSection id="bridge" title="Bridge" icon={<Plug size={18} />}>
-                  <div className="settings-rows">
-                    <div className="settings-row">
-                      <span className="settings-label">Local bridge status</span>
-                      <div className="settings-account-actions">
-                        <span className={bridgeBadgeClass(bridgeStatus)}>{bridgeStatus}</span>
-                        <button type="button" className="settings-export-logs-btn settings-save-btn--compact" onClick={() => void checkBridge()}>
-                          <RefreshCcw size={14} />
-                          Check bridge
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="settings-row settings-row--column">
-                      <label className="settings-label" htmlFor="bridge-url">Extension bridge URL</label>
-                      <input
-                        id="bridge-url"
-                        name="bridgeUrl"
-                        type="text"
-                        className="settings-text-input"
-                        value={settings.bridgeUrl}
-                        onChange={(event) => {
-                          setSettings((current) => {
-                            const next = { ...current, bridgeUrl: event.currentTarget.value };
-                            saveAppSettings(next);
-                            return next;
-                          });
-                          flashSaved('Saved');
-                        }}
-                      />
-                      <span className="settings-hint">
-                        Default: <code>{DEFAULT_SETTINGS.bridgeUrl}</code>
-                      </span>
-                    </div>
-
-                    <div className="settings-row settings-row--column">
-                      <label className="settings-label">Chrome extension folder</label>
-                      <div className="settings-path-control">
-                        <code className="settings-path-value">{EXTENSION_PATH}</code>
-                        <button type="button" className="settings-export-logs-btn settings-save-btn--compact" onClick={() => void copyExtensionPath()}>
-                          <Copy size={14} />
-                          Copy
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </SettingSection>
-              )}
-
-              {sectionVisible('diagnostics') && (
-                <SettingSection id="diagnostics" title="Diagnostics" icon={<AlertCircle size={18} />}>
-                  <AuthCaptureDebugPanel compact variant="settings" title="Latest upstream capture" />
                 </SettingSection>
               )}
             </>
