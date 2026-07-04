@@ -1,7 +1,7 @@
 <h1 align="center">OpenStroid</h1>
 
 <p align="center">
-  <img src="logo.svg" alt="OpenStroid logo" width="180" />
+  <img src="logo.png" alt="OpenStroid logo" width="180" />
 </p>
 
 <p align="center">
